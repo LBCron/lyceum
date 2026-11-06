@@ -3,7 +3,7 @@ id: 45073d-release-macos-15-runner-v1-follows-the-r
 type: chore
 title: 'release: macos-15 runner, v1 follows the rc until v1.0.0'
 branch: chore/45073d-release-macos-15-runner-v1-follows-the-r
-status: implemented
+status: closed
 gate: close
 files: [.github/workflows/release.yml, check-action/run.sh, cmd/lyceum/testdata/script/ac181_check_action.txtar, README.md, lyceum/decisions.md]
 approvals:
