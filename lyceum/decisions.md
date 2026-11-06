@@ -9,3 +9,4 @@ this file is why it says what it says. The log starts at v1: the decisions befor
 | # | Decision | Source |
 |---|---|---|
 | D1 | Lyceum v1: the first public version. Earlier design decisions are folded into the spec | owner, 2026-11-06 |
+| D2 | `vN` follows the newest verified prerelease until a stable `vN.x.y` exists; from then on only stable releases move it, and `check-action` accepts a prerelease behind `vN` only when no stable release is there. Revises the release rule in the README and the release workflow that `v1` never moves to a prerelease | owner, 2026-11-06 |
