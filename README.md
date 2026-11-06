@@ -9,9 +9,27 @@ runs from the pre-commit hook and in CI, so work that skipped a gate is caught.
 
 ## Install
 
+With npm, run it once without installing:
+
 ```sh
-npx lyceum init                      # or: npm i -g lyceum
+npx lyceum init
+```
+
+or install it globally:
+
+```sh
+npm i -g lyceum
+```
+
+With Homebrew:
+
+```sh
 brew install oritromax/tap/lyceum
+```
+
+With Go:
+
+```sh
 go install github.com/oritromax/lyceum/cmd/lyceum@latest
 ```
 
