@@ -1,0 +1,19 @@
+---
+id: 4108b4-check-ci-finds-no-unit-on-a-pull-request
+type: bug
+title: check --ci finds no unit on a pull request's merge checkout
+branch: fix/4108b4-check-ci-finds-no-unit-on-a-pull-request
+status: planned
+gate: repro
+approvals: []
+---
+
+## What and why
+
+## Spec delta
+
+## Steps
+
+## Progress
+
+## Log
