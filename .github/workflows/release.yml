@@ -101,9 +101,12 @@ jobs:
         run: |
           # Self-contained for a hand run: GITHUB_REF_NAME=v<version> CASK=<path to lyceum.rb>.
           set -eu
-          export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+          # Update brew first, as a user's brew install does: a runner image's
+          # preinstalled Homebrew can predate stanzas goreleaser writes.
+          export HOMEBREW_NO_INSTALL_CLEANUP=1
           version="${GITHUB_REF_NAME#v}"
           cask="${CASK:?set CASK to the cask file}"
+          brew update
           brew tap-new --no-git lyceumverify/local
           tap="$(brew --repository lyceumverify/local)"
           mkdir -p "$tap/Casks"
