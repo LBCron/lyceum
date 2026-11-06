@@ -57,10 +57,13 @@ homebrew_casks:
     description: Spec-driven SDLC for agentic development
     license: MIT
     commit_msg_template: "lyceum {{ .Tag }}"
+    # Written to dist/homebrew/Casks/lyceum.rb only; release.yml's tap job pushes it
+    # once the verify jobs have brew-installed it.
+    skip_upload: true
     hooks:
       post:
         # Release binaries are not notarized; brew installs must not be quarantined.
-        install_steps: |
+        install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/lyceum"]
           end

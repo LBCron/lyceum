@@ -1,8 +1,10 @@
 # Release on a v* tag: goreleaser builds the four v1 platforms, attaches the
-# archives and checksums.txt to the GitHub release and writes the brew cask to
-# oritromax/homebrew-tap; then the npm packages are published (platform
-# packages first, the lyceum shim last); then each archive is checked on its
-# own platform (AC85); then the release may move its major tag (v1), which
+# archives and checksums.txt to the GitHub release and generates the brew cask
+# (kept as artifact cask, not pushed); then the npm packages are published
+# (platform packages first, the lyceum shim last); then each archive is checked
+# on its own platform (AC85), and on darwin the cask is brew-installed from a
+# local tap; then the tap job commits the cask to oritromax/homebrew-tap; then
+# the release may move its major tag (v1), which
 # check-action@v1 resolves to the release it points at: until a stable vN.x.y
 # exists vN follows the newest prerelease, from then on only stable releases.
 name: release
@@ -32,7 +34,11 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cask
+          path: dist/homebrew/Casks/lyceum.rb
+          if-no-files-found: error
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -83,9 +89,69 @@ jobs:
           got="$(./lyceum --version)"
           echo "$got"
           test "$got" = "lyceum $version"
+      - uses: actions/download-artifact@v7
+        if: matrix.os == 'darwin'
+        with:
+          name: cask
+          path: cask
+      - name: brew install the cask from a local tap
+        if: matrix.os == 'darwin'
+        env:
+          CASK: cask/lyceum.rb
+        run: |
+          # Self-contained for a hand run: GITHUB_REF_NAME=v<version> CASK=<path to lyceum.rb>.
+          set -eu
+          export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+          version="${GITHUB_REF_NAME#v}"
+          cask="${CASK:?set CASK to the cask file}"
+          brew tap-new --no-git lyceumverify/local
+          tap="$(brew --repository lyceumverify/local)"
+          mkdir -p "$tap/Casks"
+          cp "$cask" "$tap/Casks/lyceum.rb"
+          brew install --cask lyceumverify/local/lyceum
+          bin="$(readlink -f "$(command -v lyceum)")"
+          echo "$bin"
+          if xattr -p com.apple.quarantine "$bin"; then
+            echo "$bin is still quarantined" >&2
+            exit 1
+          fi
+          got="$(lyceum --version)"
+          echo "$got"
+          test "$got" = "lyceum $version"
+          brew uninstall --cask lyceum
+          brew untap lyceumverify/local
+
+  tap:
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions: {} # the push uses HOMEBREW_TAP_TOKEN, not GITHUB_TOKEN
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: cask
+          path: cask
+      - name: Commit the cask to oritromax/homebrew-tap
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -eu
+          git clone --depth 1 --branch main \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/oritromax/homebrew-tap.git" tap
+          mkdir -p tap/Casks
+          cp cask/lyceum.rb tap/Casks/lyceum.rb
+          cd tap
+          git add Casks/lyceum.rb
+          if git diff --cached --quiet; then
+            echo "Casks/lyceum.rb is unchanged"
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m "lyceum $GITHUB_REF_NAME"
+          git push origin HEAD:main
 
   major-tag:
-    needs: verify
+    needs: [verify, tap]
     # Every v* tag: the step decides whether this release moves vN.
     runs-on: ubuntu-24.04
     permissions:
