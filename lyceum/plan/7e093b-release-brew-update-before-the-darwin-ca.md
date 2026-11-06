@@ -3,8 +3,8 @@ id: 7e093b-release-brew-update-before-the-darwin-ca
 type: chore
 title: 'release: brew update before the darwin cask install'
 branch: chore/7e093b-release-brew-update-before-the-darwin-ca
-status: in-progress
-gate: build
+status: implemented
+gate: close
 files: [.github/workflows/release.yml]
 approvals:
   - gate: plan
