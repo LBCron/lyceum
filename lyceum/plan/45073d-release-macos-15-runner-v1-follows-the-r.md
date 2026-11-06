@@ -47,4 +47,11 @@ exists, only stable releases move it, as today.
 
 ## Progress
 
+- [x] 1. darwin-arm64 verify on `macos-15`.
+- [x] 2. `major-tag` runs for every tag; a prerelease moves `vN` only with no stable `vN.x.y` and when highest by
+  semver (same awk comparison as `run.sh`). Checked by hand against scratch tag repos.
+- [x] 3. `major_release` accepts `vN.x.y-<pre>`, stable first; comparator shared with `newest_release`.
+- [x] 4. AC181 cases: rc-only commit runs the rc (fails on old `run.sh`); rc + stable runs the stable.
+- [x] 5. README CI section; D2.
+
 ## Log
