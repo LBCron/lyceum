@@ -74,6 +74,11 @@ func runCheck(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// On a pull request GitHub checks out the merge commit with HEAD detached,
+	// and names the pull request's branch in GITHUB_HEAD_REF.
+	if ci && branch == "" {
+		branch = os.Getenv("GITHUB_HEAD_REF")
+	}
 	p, err := openUnit(root, branch)
 	if err != nil {
 		return err
