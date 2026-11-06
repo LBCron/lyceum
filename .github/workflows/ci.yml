@@ -1,0 +1,38 @@
+# Lyceum's own suite (TESTING.md) on Linux and macOS (NF5), plus the npm shim tests.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: go vet
+        run: go vet ./...
+      - name: Suite
+        run: go test ./... -count=1
+      - name: Shim tests
+        run: node --test npm/shim.test.js
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.15.0

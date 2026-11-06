@@ -1,0 +1,139 @@
+# AC122: given approvals.harness_prompt: allow and a unit at spec, when the Claude Code, OpenCode or Pi hook receives a lyceum approve spec shell call, then it answers "ask" in that harness's format and writes a grant; when approve spec then runs inside the harness with the grant, the gate clears and the event has via: harness-prompt; with no grant, an expired one, or one for another gate, it refuses as before. For Codex and Command Code the hook denies
+# Inside the harness: a harness marker is set and stdin is not a terminal. allow is the default.
+cd $REPO
+exec lyceum init --harness opencode --harness pi
+grep '^  harness_prompt: allow$' lyceum/config.yaml
+cp $WORK/testing.md TESTING.md
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# Codex and Command Code have no prompt the agent can't answer: deny, and no grant.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: '
+! exists .lyceum/approve-grant.json
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '"permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: '
+! exists .lyceum/approve-grant.json
+
+# OpenCode: the shim's answer is ask, with the reason naming the unit, gate and files; the grant is written.
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, approving: lyceum/plan/6ae678-csv-export\.md, lyceum/SPEC\.md\. Allow it only if you are the owner and have reviewed them; Lyceum records that it was approved through this prompt\."\}$'
+! stderr .
+grep '^\{"unit":"6ae678-csv-export","gate":"spec","harness":"opencode","command":"lyceum approve spec","at":"2026-01-01T00:00:00Z","expires":"2026-01-01T00:02:00Z"\}$' .lyceum/approve-grant.json
+# The grant is local: .lyceum/ is ignored.
+exec git status --porcelain
+! stdout .
+
+# OpenCode: what the shim's permission evaluate hook sends for the same call gets ask too.
+exec sh -c 'printf "{\"tool\":\"shell\",\"input\":{\"command\":\"lyceum approve spec\"},\"cwd\":\"%s\"}" "$REPO" > $WORK/eval.json'
+stdin $WORK/eval.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, '
+
+# Pi: ask, in the shim's format.
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, approving: lyceum/plan/6ae678-csv-export\.md, lyceum/SPEC\.md\. '
+grep '"harness":"pi"' .lyceum/approve-grant.json
+
+# Claude Code: permissionDecision ask; the grant records the payload's permission mode.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, approving: lyceum/plan/6ae678-csv-export\.md, lyceum/SPEC\.md\. [^"]*"\}\}$'
+grep '^\{"unit":"6ae678-csv-export","gate":"spec","harness":"claude","command":"lyceum approve spec","permission_mode":"bypassPermissions","at":"2026-01-01T00:00:00Z","expires":"2026-01-01T00:02:00Z"\}$' .lyceum/approve-grant.json
+cp .lyceum/approve-grant.json $WORK/grant.json
+
+# A grant for another harness than the one approve runs in: refused as before.
+! exec sh -c 'PI_CODING_AGENT=1 lyceum approve spec'
+stderr '^Can''t approve spec: this is running inside an agent harness \(PI_CODING_AGENT is set\); approval is for the owner, typed in their own terminal$'
+
+# An expired grant: refused as before. It expires 2 minutes after it was written.
+env LYCEUM_NOW=2026-01-01T00:02:00Z
+! exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+env LYCEUM_NOW=2026-01-01T00:00:00Z
+
+# A grant for another gate: refused as before.
+exec sh -c 'sed "s/\"gate\":\"spec\"/\"gate\":\"plan\"/" $WORK/grant.json > .lyceum/approve-grant.json'
+! exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+
+# A grant for another unit (same gate, unexpired, same harness): refused as before, and the grant is not consumed.
+cp $WORK/grant.json .lyceum/approve-grant.json
+exec git switch -q main
+exec lyceum add feat 'PDF export'
+stdout '^Gate: spec$'
+! stdout 6ae678-csv-export
+! exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+cmp .lyceum/approve-grant.json $WORK/grant.json
+! grep '"type":"approve"' lyceum/events.jsonl
+exec git switch -q feat/6ae678-csv-export
+
+# No grant, outside a harness and with no terminal: refused as before (TTY).
+rm .lyceum/approve-grant.json
+! exec lyceum approve spec
+stderr '^Can''t approve spec: stdin and stdout must both be a terminal'
+! grep '"type":"approve","unit":"6ae678' lyceum/events.jsonl
+grep '^gate: spec$' lyceum/plan/6ae678-csv-export.md
+
+# The matching grant: the env and TTY refusals and the typed confirmation are skipped; the summary is still shown.
+cp $WORK/grant.json .lyceum/approve-grant.json
+exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stdout '^Approved spec for 6ae678-csv-export$'
+stderr '^Gate: spec$'
+stderr '^  lyceum/plan/6ae678-csv-export.md sha256:[0-9a-f]{64}$'
+stderr '^Confirmed in the claude prompt$'
+! stderr 'Type the gate name'
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+grep '"type":"approve","unit":"6ae678-csv-export",.*"counts":true,"gate":"spec",.*"harness":"claude",.*"permission_mode":"bypassPermissions",.*"via":"harness-prompt"\}$' lyceum/events.jsonl
+# One use: the grant is consumed, and the approval is committed.
+! exists .lyceum/approve-grant.json
+exec git status --porcelain
+! stdout .
+
+# OpenCode, with the repo-level testing gate: the grant from the hook clears it.
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate testing, approving: TESTING\.md\. '
+grep '^\{"unit":"","gate":"testing","harness":"opencode",' .lyceum/approve-grant.json
+exec sh -c 'OPENCODE_TERMINAL=1 lyceum approve testing'
+stdout '^Approved testing$'
+grep '"type":"approve","unit":"",.*"gate":"testing",.*"harness":"opencode",.*"via":"harness-prompt"\}$' lyceum/events.jsonl
+! grep '"harness":"opencode","permission_mode"' lyceum/events.jsonl
+
+# Pi, re-approving testing.
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate testing, '
+exec sh -c 'PI_CODING_AGENT=1 lyceum approve testing'
+stdout '^Approved testing$'
+grep '"type":"approve","unit":"",.*"gate":"testing",.*"harness":"pi",.*"via":"harness-prompt"\}$' lyceum/events.jsonl
+! exists .lyceum/approve-grant.json
+
+# The shims act on ask: Pi confirms with the human and blocks without a UI; OpenCode asks in its permission evaluate hook.
+grep 'ctx\.hasUI' .pi/extensions/lyceum.ts
+grep 'ctx\.ui\.confirm\("Lyceum approval", answer\.reason\)' .pi/extensions/lyceum.ts
+grep 'ctx\.permission\.hook\("evaluate"' .opencode/plugins/lyceum.js
+grep 'input: \{ command: event\.resources\[0\] \}' .opencode/plugins/lyceum.js
+grep 'event\.effect = answer\.decision' .opencode/plugins/lyceum.js
+
+-- testing.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md

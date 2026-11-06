@@ -1,0 +1,77 @@
+# distribution.md "lyceum init" step 4: wiring Codex merges [sandbox_workspace_write]
+# writable_roots = ["<absolute repo path>/.git"] into .codex/config.toml, since under workspace-write
+# Codex mounts .git read-only and the agent can't commit. A re-run rewrites the path if the repo moved.
+
+# Absent: created, and init says Codex can now commit.
+cd $REPO
+exec lyceum init --harness codex
+stdout '^Created \.codex/config\.toml$'
+stdout '^Wired Codex\n  Codex runs project hooks only once you trust them; .*\n  Codex can now commit in this repo: \.codex/config\.toml makes \.git writable under workspace-write$'
+exec sh -c 'top=$(git rev-parse --show-toplevel); printf "[sandbox_workspace_write]\n# lyceum init added \"%s/.git\" so Codex can commit in this repo\nwritable_roots = [\"%s/.git\"]\n" "$top" "$top" > $WORK/want-created.toml'
+cmp .codex/config.toml $WORK/want-created.toml
+
+# Re-run: unchanged.
+exec lyceum init
+! stdout 'config\.toml$'
+stdout '^  Codex can now commit in this repo'
+cmp .codex/config.toml $WORK/want-created.toml
+
+# An existing config: every other key and table is kept, and the path joins the user's array.
+exec git init -q -b main $WORK/own
+exec git -C $WORK/own config user.email owner@example.com
+cd $WORK/own
+mkdir .codex
+cp $WORK/existing.toml .codex/config.toml
+exec lyceum init --harness codex
+stdout '^Updated \.codex/config\.toml$'
+exec sh -c 'top=$(git rev-parse --show-toplevel); sed "s|@TOP@|$top|g" $WORK/want-merged.toml > $WORK/want-own.toml'
+cmp .codex/config.toml $WORK/want-own.toml
+exec lyceum init
+! stdout 'config\.toml$'
+cmp .codex/config.toml $WORK/want-own.toml
+
+# The repo moved: the stale path init added is replaced; the user's own path stays.
+cd $WORK
+mv $WORK/own $WORK/moved
+cd $WORK/moved
+exec lyceum init
+stdout '^Updated \.codex/config\.toml$'
+exec sh -c 'top=$(git rev-parse --show-toplevel); sed "s|@TOP@|$top|g" $WORK/want-merged.toml > $WORK/want-moved.toml'
+cmp .codex/config.toml $WORK/want-moved.toml
+! grep '/own/\.git' .codex/config.toml
+
+# A form line editing can't change safely (a multi-line array) is refused with the next step.
+exec git init -q -b main $WORK/multi
+exec git -C $WORK/multi config user.email owner@example.com
+cd $WORK/multi
+mkdir .codex
+cp $WORK/multiline.toml .codex/config.toml
+! exec lyceum init --harness codex
+stderr '^Can''t wire Codex: \.codex/config\.toml has a writable_roots that lyceum init can''t edit safely: writable_roots spans several lines$'
+stderr '^Next: add ".*/multi/\.git" to writable_roots under \[sandbox_workspace_write\] in \.codex/config\.toml yourself, then run "lyceum init" again$'
+cmp .codex/config.toml $WORK/multiline.toml
+
+-- existing.toml --
+model = "o3"
+
+[sandbox_workspace_write]
+network_access = true
+writable_roots = ["/data"] # mine
+
+[tui]
+theme = "dark"
+-- want-merged.toml --
+model = "o3"
+
+[sandbox_workspace_write]
+network_access = true
+# lyceum init added "@TOP@/.git" so Codex can commit in this repo
+writable_roots = ["/data", "@TOP@/.git"] # mine
+
+[tui]
+theme = "dark"
+-- multiline.toml --
+[sandbox_workspace_write]
+writable_roots = [
+  "/data",
+]

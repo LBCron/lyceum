@@ -1,0 +1,67 @@
+# AC149: given a bug whose plan acs: names AC50 and no area file has an AC50 row, when approve cause runs, then it refuses naming AC50; once the row is added, the event hashes that area file
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Crash'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause --no-repro ''visual only'' >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+linesub lyceum/plan/6ae678-crash.md lyceum/plan/6ae678-crash.md 'gate: diagnose' 'gate: diagnose\nacs: [AC50]'
+cp $WORK/fix.sh fix.sh
+exec git add -A
+exec git commit -q -m 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-crash$'
+cp lyceum/events.jsonl $WORK/before.jsonl
+
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve cause: the plan''s acs: names AC50, but no area file in lyceum/spec/ defines it$'
+stderr '^Next: write the AC50 row into its area file and the registry range, commit, then run "lyceum test" so verify clears again$'
+! stderr 'Type the gate name'
+cmp lyceum/events.jsonl $WORK/before.jsonl
+
+# The row is written and committed: the approval hashes its area file.
+cp $WORK/orders2.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'AC50 row'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '"type":"approve","unit":"6ae678-crash",.*"gate":"cause","hashes":\{.*"lyceum/spec/orders.md":"sha256:' lyceum/events.jsonl
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+
+# TESTING.md
+-- t.sh --
+exit 0
+-- a_test.sh --
+exit 0
+-- fix.sh --
+echo fixed
+-- orders.md --
+# Orders
+-- orders2.md --
+# Orders
+
+| AC50 | Given a crash, then it does not crash |
+-- testing.txt --
+testing
+-- cause.txt --
+cause

@@ -1,0 +1,72 @@
+# AC55: with no TESTING.md, lyceum test runs no tests and prints that TESTING.md must be drafted and approved
+cd $REPO
+exec lyceum init
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# No TESTING.md: nothing runs and nothing is recorded.
+! exec lyceum test
+! stdout .
+stderr '^Can''t run tests: this is the first run: TESTING.md does not exist, and it must be drafted and approved before tests run$'
+stderr '^Next: the agent drafts TESTING.md from the project''s test frameworks$'
+stderr '^Next: then run "lyceum approve testing" yourself in a terminal$'
+! exists .lyceum/runs
+! exec lyceum test --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"this is the first run: TESTING.md does not exist, and it must be drafted and approved before tests run","next":\[.*"then run \\"lyceum approve testing\\" yourself in a terminal"\]\},"schema":"TESTING.md starts with this frontmatter.*\}$'
+! stderr .
+! exists .lyceum/runs
+
+# Drafted but not approved: it runs and records, and says the run can't clear a gate.
+cp $WORK/TESTING.md TESTING.md
+exec git add TESTING.md
+exec git commit -q -m 'draft TESTING.md'
+exec lyceum test
+stdout '^t.sh ran$'
+stdout '^This run can''t clear a gate: TESTING.md is not approved$'
+stdout '\nNext: run "lyceum approve testing" yourself in a terminal\n$'
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+stdout '^ *1$'
+
+# Approved: no notice.
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^t.sh ran$'
+! stdout 'can''t clear a gate'
+stdout '\nNext: start a unit: lyceum add feat "<title>"\n$'
+
+# Changed since its approval: it still runs and records, and says so.
+cp $WORK/TESTING-v2.md TESTING.md
+exec lyceum test
+stdout '^t.sh ran$'
+stdout '^This run can''t clear a gate: TESTING.md changed since its approval$'
+stdout '\nNext: run "lyceum approve testing" yourself in a terminal\n$'
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+stdout '^ *3$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- TESTING-v2.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh", "tests/*.sh"]
+---
+
+# TESTING.md

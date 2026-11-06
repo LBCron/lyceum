@@ -1,0 +1,35 @@
+# AC142: given the hook installed, when the agent runs one shell command containing lyceum approve spec and lyceum approve project, then it is denied with a reason naming one approval per command and no grant file exists
+cd $REPO
+exec lyceum init --harness opencode
+grep '^  harness_prompt: allow$' lyceum/config.yaml
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# Chained, in a harness that has the prompt route: denied, and no grant is written.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec && lyceum approve project'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: one approval per command'
+! stdout '"ask"'
+! exists .lyceum/approve-grant.json
+
+# Separated by a semicolon, on a path, or with a flag between: the same.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec; ./dist/lyceum --json approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout 'one approval per command'
+! exists .lyceum/approve-grant.json
+
+# In a harness with no prompt route the reason is the same.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec && lyceum approve project'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout 'one approval per command'
+
+# One approval still takes the prompt route.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"ask"'
+exists .lyceum/approve-grant.json

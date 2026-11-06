@@ -1,0 +1,30 @@
+{
+  "name": "lyceum",
+  "version": "0.0.1",
+  "description": "Spec-driven SDLC for agentic development. Works with Claude Code, Codex, OpenCode and other harnesses.",
+  "keywords": [
+    "spec-driven",
+    "agentic",
+    "sdlc",
+    "claude-code",
+    "codex",
+    "opencode",
+    "agents"
+  ],
+  "author": "Oritro Ahmed <oritromax@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/oritromax/lyceum.git"
+  },
+  "license": "MIT",
+  "bin": {
+    "lyceum": "bin/lyceum.js"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

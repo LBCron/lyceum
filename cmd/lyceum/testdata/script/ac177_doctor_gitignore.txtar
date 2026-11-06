@@ -1,0 +1,19 @@
+# AC177: given a Lyceum repo whose .gitignore lacks a harness state path, when doctor runs, then a finding names the path with lyceum init as the next step, .gitignore is unchanged, and after init the finding is gone
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+cp .gitignore $WORK/full.txt
+cp $WORK/old.txt .gitignore
+exec lyceum doctor
+stdout '^gitignore: \.gitignore does not ignore what harnesses write on their own: \.commandcode/taste/, \.claude/settings\.local\.json, \.claude/worktrees/$'
+stdout '^  to fix: run "lyceum init"$'
+cmp .gitignore $WORK/old.txt
+
+exec lyceum init
+exec lyceum doctor
+! stdout 'gitignore'
+cmp .gitignore $WORK/full.txt
+
+-- old.txt --
+.lyceum/

@@ -1,0 +1,61 @@
+# AC62: given a test named TestExport_AC14, then AC14 is mapped; given AC140 only, then AC14 is not mapped
+# Mapping is what feat's verify checks: every AC in the plan's acs: mapped by a file matching test_files.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: [AC14]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Only AC140 appears in a test, and AC14 only outside test_files: AC14 is not mapped, so verify does not clear.
+cp $WORK/export140_test.sh export_test.sh
+cp $WORK/notes.txt notes.txt
+exec git add -A
+exec git commit -q -m 'test AC140'
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Not cleared: verify: these ACs in the plan''s acs: are not mapped to a test: AC14$'
+stdout '^Next: name each AC in a test name or a test comment, in a file matching test_files in TESTING.md, then run "lyceum test"$'
+! grep gate-clear lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+
+# TestExport_AC14 maps AC14: verify clears.
+cp $WORK/export14_test.sh export_test.sh
+exec git commit -q -am 'test AC14'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+grep '"type":"gate-clear","unit":"6ae678-csv-export".*"gate":"verify"' lyceum/events.jsonl
+grep '^gate: close$' lyceum/plan/6ae678-csv-export.md
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f"; done
+-- export140_test.sh --
+# TestExport_AC140
+echo export ok
+-- export14_test.sh --
+# TestExport_AC14
+echo export ok
+-- notes.txt --
+AC14 is the export criterion.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

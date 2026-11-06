@@ -1,0 +1,48 @@
+# AC20: given a feat at verify, when the full suite passes but AC17 is not found in any test, then verify does not clear and the output names AC17
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: [AC17, AC900]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+mkdir src
+cp $WORK/export.sh src/export.sh
+cp $WORK/export_test.sh export_test.sh
+exec git add -A
+exec git commit -q -m 'CSV export'
+
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Not cleared: verify: these ACs in the plan''s acs: are not mapped to a test: AC17$'
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- export.sh --
+echo "id,total"
+-- export_test.sh --
+# TestExport_AC900: the export prints a CSV header
+sh src/export.sh | grep -q "^id,total$"

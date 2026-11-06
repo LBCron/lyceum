@@ -1,0 +1,115 @@
+# AC46: bare approve with two pending gates presents both in order in one session: testing first, then the unit's gate
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp $WORK/testing-v1.md TESTING.md
+exec git add -A
+exec git commit -q -m 'draft TESTING.md'
+
+# A feat at spec and an unapproved TESTING.md: both gates, testing first, in one run.
+ttyrun $WORK/both.txt 'lyceum approve'
+stdout '^exit=0$'
+stderr '(?s)^Gate: testing\nFiles to approve:\n  TESTING.md sha256:[0-9a-f]{64}\nFirst approval of testing: no earlier approval to diff against.\nType the gate name to approve \(testing\): Unit: 6ae678-csv-export\nGate: spec\n'
+stderr '^  lyceum/plan/6ae678-csv-export.md sha256:[0-9a-f]{64}$'
+stderr 'Type the gate name to approve \(spec\): $'
+! stderr 'Can''t'
+grep '(?s)Approved testing\r?\n.*Approved spec for 6ae678-csv-export' $WORK/tty.out
+grep '^Gate: build' $WORK/tty.out
+
+# Both recorded: testing is repo-wide, so its event has no unit. Each approval is its own commit.
+grep -count=2 '"type":"approve"' lyceum/events.jsonl
+grep '"type":"approve","unit":"","actor":"owner@example.com",.*"counts":true,"gate":"testing","hashes":\{"TESTING.md":"sha256:[0-9a-f]{64}"\}' lyceum/events.jsonl
+grep '"type":"approve","unit":"6ae678-csv-export",.*"counts":true,"gate":"spec"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+! grep 'gate: testing' lyceum/plan/6ae678-csv-export.md
+exec git log -2 --format=%s
+cmp stdout $WORK/want-log.txt
+exec git status --porcelain
+! stdout .
+
+# Nothing is pending now: bare approve says so and asks nothing. It still answers only
+# in a terminal; the terminal shows the reply after the echoed Enter.
+cp lyceum/events.jsonl $WORK/events-after.jsonl
+ttyrun $WORK/enter.txt 'lyceum approve'
+stdout '^exit=0$'
+grep '^Nothing pending: no gate is waiting for approval\r?$' $WORK/tty.out
+grep '^Unit: 6ae678-csv-export\r?$' $WORK/tty.out
+grep '^Gate: build\r?$' $WORK/tty.out
+! stderr .
+ttyrun $WORK/enter.txt 'lyceum approve --json'
+stdout '^exit=0$'
+grep '^\{"ok":true,"unit":"6ae678-csv-export","gate":"build",.*"data":\{"approved":\[\]\}.*\}\r?$' $WORK/tty.out
+grep -count=1 '^.*\S' $WORK/tty.out
+! stderr .
+cmp lyceum/events.jsonl $WORK/events-after.jsonl
+
+# With no terminal, bare approve with nothing pending gets the TTY refusal, not the reply.
+! exec lyceum approve
+! stdout .
+stderr '^Can''t approve: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve" yourself in a terminal$'
+! stderr 'Nothing pending'
+cmp lyceum/events.jsonl $WORK/events-after.jsonl
+
+# TESTING.md changed since its approval is pending again. With the gate reset to spec by
+# hand (reopening a gate is not built yet), a mismatched word stops the walk (AC143), and
+# the run exits 2 naming what was not approved.
+cp $WORK/testing-v2.md TESTING.md
+exec sh -c 'sed "s/^gate: build$/gate: spec/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+exec git add -A
+exec git commit -q -m 'revise TESTING.md'
+ttyrun $WORK/skip-testing.txt 'lyceum approve'
+stdout '^exit=2$'
+stderr '^Changes since the last testing approval \(commit [0-9a-f]{7,}\):$'
+stderr '^Pending gates: testing, spec$'
+stderr '^Type the gate name to approve \(testing\): Can''t approve: the confirmation of testing did not match, so the walk stopped; not approved: testing, spec$'
+! stderr '^Gate: spec$'
+stderr '^Next: run "lyceum approve" again for the gates still pending$'
+! grep 'Approved' $WORK/tty.out
+grep -count=2 '"type":"approve"' lyceum/events.jsonl
+grep -count=1 '"gate":"testing"' lyceum/events.jsonl
+
+# approve testing works on its own; then nothing is pending.
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+! stderr 'Unit:'
+grep 'Approved testing' $WORK/tty.out
+grep -count=2 '"type":"approve","unit":"",.*"gate":"testing"' lyceum/events.jsonl
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+ttyrun $WORK/enter.txt 'lyceum approve'
+stdout '^exit=0$'
+grep '^Nothing pending: no gate is waiting for approval\r?$' $WORK/tty.out
+
+-- enter.txt --
+
+-- both.txt --
+testing
+spec
+-- skip-testing.txt --
+nope
+spec
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- testing-v1.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md
+-- testing-v2.md --
+---
+lyceum: 1
+suite: go test ./... -count=1
+---
+
+# TESTING.md
+-- want-log.txt --
+lyceum: approve spec 6ae678-csv-export
+lyceum: approve testing

@@ -1,0 +1,98 @@
+# A test unit's run gate (units.md, test row): after add test, at write and in-progress, a passing
+# gate-evidence run clears run only when the branch diff has a test file and no code. A failing suite on a
+# branch that changes only tests means the new test fails on current code; close keeps it as a bug.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add test 'Add zero'
+grep '^gate: write$' lyceum/plan/6ae678-add-zero.md
+grep '^status: in-progress$' lyceum/plan/6ae678-add-zero.md
+
+# No test file in the branch diff yet: the suite passes, but run does not clear.
+exec lyceum test
+stdout '^Not cleared: run: the branch diff has no test file, so the new test is not in the run$'
+stdout '^Gate: write$'
+stdout '^Next: write the new test in a file matching test_files in TESTING.md, commit it, then run "lyceum test"$'
+
+# A new test that fails on the current code: a refusal saying so, and how to keep it as a bug.
+cp $WORK/zero_test-failing.sh src/zero_test.sh
+exec git add -A
+exec git commit -q -m 'new test, failing'
+! exec lyceum test
+stdout '^Failed: sh ./t.sh exited 1 after \S+$'
+stdout '^--- FAIL: TestAddZero$'
+stderr '^Can''t pass the suite: sh ./t.sh exited 1; the full output is in \.lyceum/runs/\S+\.out; the branch changes only test files, so the new test fails on the current code$'
+stderr '^Next: to keep it as a bug: run "lyceum close", which closes this unit and starts a bug on this branch with this test as its repro$'
+! stderr 'Next: start a bug'
+! grep gate-clear lyceum/events.jsonl
+
+# Code in the branch diff: the suite passes, but run does not clear and names the file.
+cp $WORK/zero_test.sh src/zero_test.sh
+exec sh -c 'echo "# touched" >> src/calc.sh'
+exec git commit -q -am 'passing test, and code'
+exec lyceum test
+stdout '^Not cleared: run: the branch changes files that are not tests, and a test unit changes only tests: src/calc.sh$'
+stdout '^Next: take those changes off this branch, keeping only test files \(test_files in TESTING.md\), then run "lyceum test"$'
+! grep gate-clear lyceum/events.jsonl
+
+# A failing suite with code in the diff is an ordinary failure, not a new test to turn into a bug.
+cp $WORK/zero_test-failing.sh src/zero_test.sh
+exec git commit -q -am 'failing again, with code'
+! exec lyceum test
+stderr '^Can''t pass the suite: sh ./t.sh exited 1; the full output is in \.lyceum/runs/\S+\.out$'
+stderr '^Next: fix the code, never the failing test, then run "lyceum test" again$'
+
+# Only the passing test in the diff: run clears; the unit is implemented, at close.
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/zero_test.sh src/zero_test.sh
+exec git commit -q -am 'only the test'
+exec lyceum test
+stdout '^Cleared run for 6ae678-add-zero$'
+stdout '^Gate: close$'
+grep '^gate: close$' lyceum/plan/6ae678-add-zero.md
+grep '^status: implemented$' lyceum/plan/6ae678-add-zero.md
+grep '"type":"gate-clear","unit":"6ae678-add-zero",.*"gate":"run","run":\{.*"subset":null,.*"exit":0,.*\},"status":"implemented"\}$' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+
+# The log replays the clear: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- zero_test.sh --
+# TestAddZero
+. ./src/calc.sh
+[ "$(add 5 0)" = 5 ] || { echo "--- FAIL: TestAddZero"; exit 1; }
+-- zero_test-failing.sh --
+# TestAddZero
+. ./src/calc.sh
+[ "$(add 5 0)" = 50 ] || { echo "--- FAIL: TestAddZero"; exit 1; }
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

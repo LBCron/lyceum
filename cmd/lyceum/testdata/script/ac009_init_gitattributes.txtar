@@ -1,0 +1,25 @@
+# AC9: after init, .gitattributes contains lyceum/events.jsonl merge=union and .lyceum/ is gitignored
+cd $REPO
+cp $WORK/gitattributes .gitattributes
+cp $WORK/gitignore .gitignore
+
+exec lyceum init
+stdout '^Updated .gitattributes$'
+stdout '^Updated .gitignore$'
+
+grep -count=1 '^lyceum/events.jsonl merge=union$' .gitattributes
+grep -count=1 '^\.lyceum/$' .gitignore
+
+# Lines already there are kept.
+grep '^\*\.png binary$' .gitattributes
+grep '^node_modules/$' .gitignore
+
+# git itself applies them.
+exec git check-attr merge lyceum/events.jsonl
+stdout '^lyceum/events.jsonl: merge: union$'
+exec git check-ignore -q .lyceum/runs/run.json
+
+-- gitattributes --
+*.png binary
+-- gitignore --
+node_modules/

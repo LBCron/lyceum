@@ -1,0 +1,12 @@
+lyceum: 1
+owner: oritromax@gmail.com
+base_branch: main
+approvals:
+  signed: false
+  harness_prompt: allow
+harnesses: []
+hooks: true
+understand:
+  warn_threshold:
+    files: 2000
+    lines: 200000

@@ -1,0 +1,122 @@
+# AC111: given eject, then no Lyceum skill, slash command, hook, CI workflow or pre-commit hook remains, the marker-delimited sections are removed, and every file under lyceum/ is unchanged
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+
+# The user's own files before init: AGENTS.md, Claude Code settings with a hook of theirs, a Codex config, a pre-commit hook.
+cp $WORK/agents-before.md AGENTS.md
+mkdir .claude .codex
+cp $WORK/claude-before.json .claude/settings.json
+cp $WORK/codex-before.toml .codex/config.toml
+cp $WORK/pre-commit-before .git/hooks/pre-commit
+chmod 755 .git/hooks/pre-commit
+exec git add -A
+exec git commit -q -m 'the user''s files'
+
+# init wires all five harnesses, appends to AGENTS.md and the pre-commit hook, and writes the CI workflow.
+stdin $WORK/answers.txt
+exec lyceum init --harness claude --harness codex --harness commandcode --harness opencode --harness pi
+exists .agents/skills/lyceum-feat/SKILL.md .claude/skills/lyceum-status/SKILL.md CLAUDE.md .github/workflows/lyceum.yml
+exists .codex/hooks.json .commandcode/settings.json .opencode/plugins/lyceum.js .pi/extensions/lyceum.ts
+grep 'lyceum hook pre-tool --harness claude' .claude/settings.json
+grep '^# lyceum init added ' .codex/config.toml
+grep '^# lyceum:start$' .git/hooks/pre-commit
+grep 'lyceum:start' AGENTS.md
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+exec sh -c 'find lyceum -type f | sort | xargs cksum > $WORK/lyceum-before.txt'
+
+# A word other than eject removes nothing.
+ttyrun $WORK/nope.txt 'lyceum eject'
+stdout '^exit=2$'
+stderr '^Eject removes Lyceum''s skills, hooks and checks; lyceum/ and the root docs stay:$'
+stderr '^  remove \.agents/skills/lyceum-feat/SKILL\.md$'
+stderr '^  update \.claude/settings\.json$'
+stderr '^  remove \.commandcode/settings\.json$'
+stderr '^  update \.codex/config\.toml$'
+stderr '^  update AGENTS\.md$'
+stderr '^  remove CLAUDE\.md$'
+stderr '^  update \.git/hooks/pre-commit$'
+stderr '^  remove \.github/workflows/lyceum\.yml$'
+stderr 'Type eject to confirm: Can''t eject: confirmation did not match; nothing was removed$'
+stderr '^Next: run "lyceum eject" again and type eject exactly$'
+exec git status --porcelain
+! stdout .
+
+# Typing eject removes them.
+ttyrun $WORK/eject.txt 'lyceum eject'
+stdout '^exit=0$'
+grep 'Removed \.agents/skills/lyceum-feat/SKILL\.md' $WORK/tty.out
+grep 'Removed \.pi/extensions/lyceum\.ts' $WORK/tty.out
+grep 'Updated \.claude/settings\.json' $WORK/tty.out
+grep 'Next: review the removal with "git status", then commit it: git add -A && git commit -m "lyceum eject"' $WORK/tty.out
+
+# No skill, hook, shim, workflow or pre-commit block is left, nor the folders init made for them.
+! exists .agents .claude/skills .codex/hooks.json .commandcode .opencode .pi .github CLAUDE.md
+exec sh -c 'grep -rl "lyceum" .claude .codex .git/hooks || echo none'
+stdout '^none$'
+
+# The user's own files are back, byte for byte.
+cmp AGENTS.md $WORK/agents-before.md
+cmp .claude/settings.json $WORK/claude-before.json
+cmp .codex/config.toml $WORK/codex-before.toml
+cmp .git/hooks/pre-commit $WORK/pre-commit-before
+exec sh -c 'test -x .git/hooks/pre-commit'
+
+# Every file under lyceum/ is unchanged, and so are RULES.md and the repo files; nothing is committed.
+exec sh -c 'find lyceum -type f | sort | xargs cksum'
+cmp stdout $WORK/lyceum-before.txt
+exists RULES.md .gitattributes .gitignore
+exec git log -1 --format=%s
+stdout '^lyceum: add feat '
+exec git status --porcelain lyceum RULES.md .gitattributes .gitignore
+! stdout .
+
+# Run again, nothing is left to remove and nothing is asked.
+ttyrun $WORK/eject.txt 'lyceum eject'
+stdout '^exit=0$'
+! stderr .
+grep 'Next: nothing to do: Lyceum''s skills, hooks and checks are not installed here' $WORK/tty.out
+
+-- answers.txt --
+y
+y
+
+-- nope.txt --
+remove
+-- eject.txt --
+eject
+-- agents-before.md --
+# Team notes
+
+Be kind to the build.
+-- claude-before.json --
+{
+  "permissions": {
+    "allow": [
+      "Bash(make && make test)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "audit.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "model": "x"
+}
+-- codex-before.toml --
+model = "o4"
+
+[profiles.fast]
+model = "o4-mini"
+-- pre-commit-before --
+#!/bin/sh
+echo checked by the team hook

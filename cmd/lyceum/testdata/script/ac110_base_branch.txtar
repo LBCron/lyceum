@@ -1,0 +1,71 @@
+# AC110: add cuts the unit branch from the remote's default branch, or from base_branch in config when set
+# origin is a local bare repo whose default branch is main; the config sets no base_branch.
+cd $REPO
+exec lyceum init
+cp $WORK/config.yaml lyceum/config.yaml
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git clone -q --bare $REPO $WORK/origin.git
+exec git clone -q $WORK/origin.git $WORK/clone
+cd $WORK/clone
+exec git config user.email owner@example.com
+exec git config user.name 'Test Owner'
+exec git symbolic-ref refs/remotes/origin/HEAD
+stdout '^refs/remotes/origin/main$'
+
+# On dev, with a commit main lacks, the unit is still cut from main.
+exec git switch -q -c dev
+cp $WORK/note.txt note.txt
+exec git add note.txt
+exec git commit -q -m 'dev work'
+exec lyceum add feat 'CSV export'
+stdout '^Created branch feat/[0-9a-f]{6}-csv-export from main$'
+exec git rev-parse main
+cp stdout $WORK/main.sha
+exec git rev-parse HEAD~1
+cmp stdout $WORK/main.sha
+! exists note.txt
+
+# base_branch: dev in config wins over the remote's default, even from a third branch.
+exec git switch -q dev
+cp $WORK/config-dev.yaml lyceum/config.yaml
+exec git commit -q -am 'base dev'
+exec git switch -q -c other
+cp $WORK/note.txt other.txt
+exec git add other.txt
+exec git commit -q -m 'other work'
+exec lyceum add feat 'Second'
+stdout '^Created branch feat/[0-9a-f]{6}-second from dev$'
+exec git rev-parse dev
+cp stdout $WORK/dev.sha
+exec git rev-parse HEAD~1
+cmp stdout $WORK/dev.sha
+exists note.txt
+! exists other.txt
+
+# A base_branch that does not exist is refused, and no branch is made.
+exec git switch -q dev
+cp $WORK/config-nope.yaml lyceum/config.yaml
+exec git commit -q -am 'base nope'
+! exec lyceum add feat 'Third'
+! stdout .
+stderr '^Can''t add a unit: the base branch "nope" does not exist here$'
+stderr '^Next: create branch nope, or set base_branch in lyceum/config.yaml to the branch units start from$'
+exec git branch --show-current
+stdout '^dev$'
+exec git branch --list '*third*'
+! stdout .
+
+-- config.yaml --
+lyceum: 1
+owner: owner@example.com
+-- config-dev.yaml --
+lyceum: 1
+owner: owner@example.com
+base_branch: dev
+-- note.txt --
+dev work
+-- config-nope.yaml --
+lyceum: 1
+owner: owner@example.com
+base_branch: nope

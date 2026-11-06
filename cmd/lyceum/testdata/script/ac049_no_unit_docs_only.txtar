@@ -1,0 +1,24 @@
+# AC49: given a branch with no unit whose diff touches only README.md and docs/x.md, when check --ci runs, then it passes
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c topic
+
+cp $WORK/x.md README.md
+mkdir docs
+cp $WORK/x.md docs/x.md
+# Anything under docs/ is not code, whatever its extension.
+cp $WORK/diagram.png docs/diagram.png
+exec git add -A
+exec git commit -q -m 'docs only'
+exec lyceum check --ci
+stdout '^No findings$'
+! stderr .
+exec lyceum check --ci --json
+stdout '"findings":\[\]'
+
+-- x.md --
+# X
+-- diagram.png --
+PNG not really an image

@@ -1,0 +1,24 @@
+# AC162: given a Lyceum repo whose installed lyceum-feat skill differs from the binary's copy, when doctor runs, then a finding names the skill with lyceum init as the next step
+cd $REPO
+exec lyceum init --harness claude
+exec lyceum doctor
+! stdout 'skill '
+
+cp $WORK/edited.md .claude/skills/lyceum-feat/SKILL.md
+exec lyceum doctor
+stdout '^skill: skill lyceum-feat differs from this binary''s copy: \.claude/skills/lyceum-feat/SKILL\.md$'
+stdout '^  to fix: run "lyceum init"$'
+exec lyceum doctor --json
+stdout '"check":"skill","message":"skill lyceum-feat differs'
+
+rm .agents/skills/lyceum-bug/SKILL.md
+exec lyceum doctor
+stdout '^skill: skill lyceum-bug is missing: \.agents/skills/lyceum-bug/SKILL\.md$'
+
+# init puts them back, and the findings go.
+exec lyceum init
+exec lyceum doctor
+! stdout 'skill '
+
+-- edited.md --
+edited

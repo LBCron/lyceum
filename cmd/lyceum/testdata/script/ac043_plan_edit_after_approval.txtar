@@ -1,0 +1,110 @@
+# AC43: given an approved plan, when the plan body is edited afterwards, then check reports that the approval no longer matches
+# For a feat the plan is approved at gate spec, so the finding names the spec approval.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec sh -c 'echo "| orders | spec/orders.md | Orders | |" >> lyceum/SPEC.md'
+exec git add -A
+exec git commit -q -m 'draft spec'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Right after the approval, check is clean and ends with the unit, gate and next action (AC5).
+exec lyceum check
+cmp stdout $WORK/want-clean.txt
+! stderr .
+exec lyceum check --ci
+cmp stdout $WORK/want-clean.txt
+
+# The agent edits the plan body and commits it.
+exec sh -c 'echo "Also export refunds." >> lyceum/plan/6ae678-csv-export.md'
+exec git commit -q -am 'edit plan after approval'
+
+# Locally: exit 0, the finding is printed; approval drift writes no bypass event.
+exec lyceum check --pre-commit
+stdout '^fail: approval-integrity: the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved$'
+stdout '^  to fix: restore lyceum/plan/6ae678-csv-export.md to what the spec approval covered'
+! stdout 'Wrote'
+stdout '\nNext: fix the findings, then run "lyceum check" again\n$'
+! stderr .
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# The same finding again writes none either.
+exec lyceum check --pre-commit
+stdout '^fail: approval-integrity: the spec approval no longer matches'
+! stdout 'Wrote'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# --json: one object, ok true locally, with the findings.
+exec lyceum check --pre-commit --json
+jsonobject
+stdout '^\{"ok":true,"unit":"6ae678-csv-export","gate":"build","next":"fix the findings, then run \\"lyceum check\\" again","data":null,"findings":\[\{"check":"approval-integrity","severity":"fail","message":"the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved","unit":"6ae678-csv-export","path":"lyceum/plan/6ae678-csv-export.md","next":"restore lyceum/plan/6ae678-csv-export.md to what the spec approval covered \(git log -p -- lyceum/plan/6ae678-csv-export.md shows the edits\)"\}\]\}$'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# In CI: exit 2, a refusal naming the spec approval and the plan file, and no event written.
+cp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: approval-integrity: the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved$'
+stderr '^Next: restore lyceum/plan/6ae678-csv-export.md to what the spec approval covered'
+cmp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '^\{"ok":false,"refusal":\{"reason":"1 failing finding:\\n  fail: approval-integrity: the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved","next":\[.*\]\},"findings":\[\{"check":"approval-integrity","severity":"fail",.*\}\]\}$'
+stdout '^exit=2$'
+cmp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+
+# The approved body restored, check --ci passes again.
+exec git show HEAD~1:lyceum/plan/6ae678-csv-export.md
+cp stdout lyceum/plan/6ae678-csv-export.md
+exec lyceum check --ci
+cmp stdout $WORK/want-clean.txt
+
+# Editing only a CLI-owned field the plan hash leaves out is no integrity finding;
+# the CLI-owned field check against the event log fails it instead (AC17).
+exec sh -c 'sed "s/^status: in-progress$/status: implemented/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+grep '^status: implemented$' lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'flip status by hand'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field status is implemented, but the event log implies in-progress$'
+! stderr 'approval-integrity'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"findings":\[\{"check":"cli-fields","severity":"fail",[^]]*"field":"status",[^]]*\}\]\}$'
+! stdout 'approval-integrity'
+
+-- spec.txt --
+spec
+-- orders.md --
+# Orders
+
+AC1: export orders as CSV.
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+approvals: []
+areas: [orders]
+files: [src/orders/export.go]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+-- want-clean.txt --
+No findings
+Unit: 6ae678-csv-export
+Gate: build
+Next: finish the build work described in the plan

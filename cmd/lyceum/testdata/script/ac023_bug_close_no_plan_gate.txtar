@@ -1,0 +1,78 @@
+# AC23: given a bug unit, when it reaches close, then no plan approval was ever required
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+
+# repro, then the root cause and the fix: verify clears, and the bug is at cause.
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+exec sh -c 'printf "\n## Root cause\n\nlogin_plus returned the wrong value.\n" >> lyceum/plan/6ae678-login-plus.md'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'root cause and fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+
+# Before the cause approval, close names cause.
+! exec lyceum close
+stderr '^Can''t close 6ae678-login-plus: unit 6ae678-login-plus is at gate cause, and close needs its cause gate cleared first$'
+stderr '^Next: run "lyceum approve cause" yourself in a terminal$'
+
+# approve cause, then close: the bug closes.
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum close
+stdout '^Closed 6ae678-login-plus$'
+grep '^status: closed$' lyceum/plan/6ae678-login-plus.md
+
+# From add to close, the log has no plan approval, and none was asked for.
+exec sh -c 'sed "s/.*\"type\":\"\([a-z-]*\)\",\"unit\":\"\([a-z0-9-]*\)\".*/\1:\2/" lyceum/events.jsonl'
+cmp stdout $WORK/want-events.txt
+! grep '"gate":"plan"' lyceum/events.jsonl
+! grep '^  - gate: plan$' lyceum/plan/6ae678-login-plus.md
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- want-events.txt --
+approve:
+add:6ae678-login-plus
+gate-clear:6ae678-login-plus
+gate-clear:6ae678-login-plus
+approve:6ae678-login-plus
+close:6ae678-login-plus
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

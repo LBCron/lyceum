@@ -1,0 +1,57 @@
+# AC98: given events and commits on the same day, when log runs, then they are interleaved by timestamp
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'set up'
+
+# A repo with no events logs its commits.
+exec lyceum log
+stdout '\A2026-01-01T00:00:00Z  commit  -  [0-9a-f]{7} initial\n2026-01-01T00:00:00Z  commit  -  [0-9a-f]{7} set up\nNext: run "lyceum status"\n\z'
+! stderr .
+
+# On one day: an add event at 09:00, a commit at 10:00, a bypass event at 11:00, a commit at 12:00.
+env LYCEUM_NOW=2026-03-02T09:00:00Z GIT_COMMITTER_DATE=2026-03-02T09:00:00Z
+exec lyceum add feat 'CSV export'
+mkdir src
+cp $WORK/a.go src/a.go
+exec git add src/a.go
+env GIT_COMMITTER_DATE=2026-03-02T10:00:00Z
+exec git commit -q -m 'write the exporter'
+env LYCEUM_NOW=2026-03-02T11:00:00Z
+exec lyceum check --pre-commit
+env GIT_COMMITTER_DATE=2026-03-02T12:00:00Z
+exec git commit -q --allow-empty -m 'tidy the exporter'
+
+# Events and commits interleave by time; add's own "lyceum: add" commit is shown as its event only.
+# A commit on the unit's branch and not on main is the unit's.
+exec git status --porcelain
+cp stdout $WORK/before.txt
+exec lyceum log
+stdout '\A2026-01-01T00:00:00Z  commit  -                  [0-9a-f]{7} initial\n'
+stdout '\n2026-01-01T00:00:00Z  commit  -                  [0-9a-f]{7} set up\n2026-03-02T09:00:00Z  add     6ae678-csv-export  branch=feat/6ae678-csv-export gate=spec status=planned unit_type=feat\n2026-03-02T10:00:00Z  commit  6ae678-csv-export  [0-9a-f]{7} write the exporter\n2026-03-02T11:00:00Z  bypass  6ae678-csv-export  check=gate-before-code message=the branch changes code before the spec gate is cleared: src/a.go\n2026-03-02T12:00:00Z  commit  6ae678-csv-export  [0-9a-f]{7} tidy the exporter\nNext: run "lyceum status"\n\z'
+stdout -count=6 '^2026-'
+! stderr .
+! stdout 'lyceum: add'
+
+# log changes nothing.
+exec git status --porcelain
+cmp stdout $WORK/before.txt
+
+# A commit on another branch, dated between the others, is placed by its time.
+exec git commit -q -m 'lyceum: bypass' lyceum/events.jsonl
+exec git switch -q main
+env GIT_COMMITTER_DATE=2026-03-02T10:30:00Z
+exec git commit -q --allow-empty -m 'fix the readme'
+exec git switch -q feat/6ae678-csv-export
+exec lyceum log
+! stdout 'lyceum: bypass'
+stdout '(?s)write the exporter\n[^\n]+ commit +- +[0-9a-f]{7} fix the readme\n[^\n]+ bypass '
+
+# --json: one object with the entries, oldest first.
+exec lyceum log --json
+jsonobject
+stdout '"entries":\[\{"ts":"2026-01-01T00:00:00Z","kind":"commit","unit":"","summary":"[0-9a-f]{7} initial","actor":"owner@example.com","commit":"[0-9a-f]{40}"\}'
+stdout '\{"ts":"2026-03-02T09:00:00Z","kind":"add","unit":"6ae678-csv-export","summary":"branch=feat/6ae678-csv-export gate=spec status=planned unit_type=feat","actor":"owner@example.com","commit":"[0-9a-f]{7}"\}'
+
+-- a.go --
+package a

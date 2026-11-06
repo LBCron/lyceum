@@ -1,0 +1,73 @@
+# AC134: given trace --run <env> without --yes, then the commands and side effects are printed and nothing runs; with --yes, then each command runs and is recorded in the trace
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+mkdir src lyceum/trace
+cp $WORK/order.go src/order.go
+exec git add -A
+exec git commit -q -m 'lyceum init, testing and code'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Without --yes: printed, nothing runs.
+exec lyceum trace --run test --trigger 'echo ordered >> env.log' 'how is an order placed?'
+stdout '^  up: echo up >> env.log$'
+stdout '^  trigger: echo ordered >> env.log$'
+stdout '^  down: echo down >> env.log$'
+stdout '^Side effects: '
+stdout '^Nothing ran: add --yes to run them.$'
+! exists env.log
+
+# With --yes: each command runs and the block to paste names each one.
+exec lyceum trace --run test --trigger 'echo ordered >> env.log' --yes 'how is an order placed?'
+cmp env.log $WORK/want-env.txt
+exec sh -c 'lyceum trace --run test --trigger "echo ordered >> env.log" --yes "how is an order placed?" | sed -n "/^## Run$/,/^$/p;/^- /p"'
+cp stdout $WORK/block.txt
+grep '^- up: `echo up >> env.log`: exit 0, ' $WORK/block.txt
+grep '^- trigger: `echo ordered >> env.log`: exit 0, ' $WORK/block.txt
+grep '^- down: `echo down >> env.log`: exit 0, ' $WORK/block.txt
+
+# The agent pastes the block into the trace and records it: every command run is in the committed trace.
+exec sh -c 'cat $WORK/head.md $WORK/block.txt $WORK/steps.md > lyceum/trace/order.md'
+exec lyceum record lyceum/trace/order.md
+stdout '^Recorded lyceum/trace/6ae678-order-placement.md$'
+exec git show HEAD:lyceum/trace/6ae678-order-placement.md
+stdout '^- up: `echo up >> env.log`: exit 0, \d+ ms, output .lyceum/traces/'
+stdout '^- trigger: `echo ordered >> env.log`: exit 0, '
+stdout '^- down: `echo down >> env.log`: exit 0, '
+stdout '^- \[observed\] Place\(\) appends to env.log$'
+
+-- testing.txt --
+testing
+-- order.go --
+package src
+
+func Place() {}
+-- TESTING.md --
+---
+lyceum: 1
+suite: true
+environments:
+  test:
+    up: echo up >> env.log
+    down: echo down >> env.log
+---
+-- want-env.txt --
+up
+ordered
+down
+-- head.md --
+---
+kind: trace
+title: Order placement
+cites:
+  - path: src/order.go
+---
+# Order placement
+
+-- steps.md --
+
+## Steps
+
+- [observed] Place() appends to env.log

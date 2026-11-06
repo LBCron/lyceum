@@ -1,0 +1,36 @@
+# Guard harnessprompt: with the grant's match off, the attacks of ac122_harness_prompt.txtar are accepted: approve
+# runs inside the harness with an expired grant, and with a grant for another gate.
+cd $REPO
+exec lyceum init
+cp $WORK/testing.md TESTING.md
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# An expired grant clears spec.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"ask"'
+env LYCEUM_NOW=2026-01-01T00:02:00Z
+exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stdout '^Approved spec for 6ae678-csv-export$'
+grep '"gate":"spec",.*"via":"harness-prompt"' lyceum/events.jsonl
+env LYCEUM_NOW=2026-01-01T00:00:00Z
+
+# A grant for spec, a gate the unit is past, clears testing.
+cp $WORK/spec-grant.json .lyceum/approve-grant.json
+exec sh -c 'CLAUDECODE=1 lyceum approve testing'
+stdout '^Approved testing$'
+grep '"gate":"testing",.*"via":"harness-prompt"' lyceum/events.jsonl
+
+-- spec-grant.json --
+{"unit":"6ae678-csv-export","gate":"spec","harness":"claude","command":"lyceum approve spec","at":"2026-01-01T00:00:00Z","expires":"2026-01-01T00:02:00Z"}
+-- testing.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md

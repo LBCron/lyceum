@@ -1,0 +1,51 @@
+# AC59: a run with uncommitted changes is recorded dirty: true, and it cannot clear a gate
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Clean tree: dirty false.
+exec lyceum test
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '"dirty":false,'
+rm .lyceum/runs
+
+# A modified tracked file: dirty true.
+cp $WORK/t2.sh t.sh
+exec lyceum test
+stdout '^t.sh changed$'
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '"dirty":true,'
+! grep gate-clear lyceum/events.jsonl
+rm .lyceum/runs
+
+# An untracked file alone: dirty true.
+exec git checkout -q t.sh
+cp $WORK/t2.sh new.txt
+exec lyceum test
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '"dirty":true,'
+! grep gate-clear lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- t2.sh --
+echo t.sh changed
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

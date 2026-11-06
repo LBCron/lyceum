@@ -1,0 +1,62 @@
+# Guard reopen: with the reopen of a bug at cause off, the attack of bug_reopen_after_verify.txtar passes:
+# after a code commit following verify, check --ci has no reopen finding and approve cause succeeds.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+
+# The code commit after verify.
+cp $WORK/login-fixed2.sh src/login.sh
+exec git commit -q -am 'tweak the fix'
+! exec lyceum check --ci
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cause: '
+! stderr 'reopen'
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=0$'
+grep 'Approved cause for 6ae678-login-plus' $WORK/tty.out
+grep '^gate: close$' lyceum/plan/6ae678-login-plus.md
+! grep gate-reopen lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login-fixed2.sh --
+login_plus() { r=ok; echo "$r"; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

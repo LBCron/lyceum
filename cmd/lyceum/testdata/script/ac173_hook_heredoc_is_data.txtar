@@ -1,0 +1,96 @@
+# AC173: given the hook, when a shell command only carries lyceum approve as data (a here-document body fed to cat or tee, a git commit message), then it is allowed and writes no grant; when it can run it (sh -c, bash -lc, eval, after ; && |, in $( ), a here-document fed to a shell or piped on, a written file then run), then the hook still stops it
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# Data: allowed, no prompt and no grant. The first is the exact shape from the field.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=cat > plan.md <<''EOF''\nthe owner runs lyceum approve testing\nEOF'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+! exists .lyceum/approve-grant.json
+
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=git commit -m \"ask the owner to run lyceum approve testing\"'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+! exists .lyceum/approve-grant.json
+
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=git commit -m \"$(cat <<''EOF''\nlyceum approve testing\nEOF\n)\"'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+! exists .lyceum/approve-grant.json
+
+# Can run: stopped. Codex has no prompt route, so each is a plain deny.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=sh -c \"lyceum approve testing\"'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=bash -lc ''lyceum approve testing'''
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=eval \"lyceum approve testing\"'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=true; lyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=true && lyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=true | lyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=echo $(lyceum approve testing)'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=git commit -m \"$(lyceum approve testing)\"'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=sh <<''EOF''\nlyceum approve testing\nEOF'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=cat <<''EOF'' | sh\nlyceum approve testing\nEOF'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=cat > s.sh <<''EOF''\nlyceum approve testing\nEOF\nsh s.sh'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=cat > p.md <<''EOF''\ntext\nEOF\nlyceum approve testing'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny"'
+
+# Claude Code's prompt route still fires for a real approval beside a here-document.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=cat > p.md <<''EOF''\ntext\nEOF\nlyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"ask"'
+exists .lyceum/approve-grant.json

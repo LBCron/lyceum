@@ -1,0 +1,102 @@
+# AC12: given understand, trace or audit, when it runs, then no file outside lyceum/ changes (and outside docs/ when an export was confirmed), except what the project's own environment commands do under a confirmed trace --run <env> --yes
+# The snapshot hashes every file but .git and lyceum/, ignored files included.
+cd $REPO
+exec lyceum init
+mkdir src lyceum/trace $WORK/bin
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/main.go src/main.go
+cp $WORK/package.json package.json
+cp $WORK/gitignore .gitignore
+cp $WORK/ignored.log ignored.log
+cp $WORK/npm $WORK/bin/npm
+chmod 755 $WORK/bin/npm
+env PATH=$WORK/bin:$PATH
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/snapshot.sh $WORK/snap.sh
+exec sh $WORK/snap.sh
+cp stdout $WORK/before.txt
+
+exec lyceum understand
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+exec lyceum understand 'how main works'
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+
+exec lyceum trace 'how does main start?'
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+
+# Printed, not confirmed: nothing runs.
+exec lyceum trace --run test --trigger 'echo ordered >> env.log' 'how does main start?'
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+
+exec lyceum audit
+stdout '^Ran: npm audit --json exited 0$'
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+
+# A confirmed export changes only docs/.
+cp $WORK/trace.md lyceum/trace/startup.md
+exec lyceum record lyceum/trace/startup.md
+exec sh $WORK/snap.sh
+cmp stdout $WORK/before.txt
+exec sh -c 'lyceum export lyceum/trace/*-startup.md'
+exec sh -c 'sh $WORK/snap.sh | grep -v " ./docs/"'
+cmp stdout $WORK/before.txt
+exists docs/trace/startup.md
+exec sh $WORK/snap.sh
+cp stdout $WORK/before.txt
+
+# A confirmed run: the environment's commands change what they change, env.log here, and the trace's own output is kept outside the tree's tracked files.
+exec lyceum trace --run test --trigger 'echo ordered >> env.log' --yes 'how does main start?'
+exists env.log
+exec sh -c 'sh $WORK/snap.sh | grep -vE " \./(env\.log|\.lyceum/traces/)"'
+cmp stdout $WORK/before.txt
+
+-- snapshot.sh --
+find . -path ./.git -prune -o -path ./lyceum -prune -o -type f -print | LC_ALL=C sort | xargs cksum
+-- testing.txt --
+testing
+-- TESTING.md --
+---
+lyceum: 1
+suite: "true"
+environments:
+  test:
+    up: echo up >> env.log
+    down: echo down >> env.log
+---
+-- main.go --
+package main
+
+func main() {}
+-- package.json --
+{"name": "app"}
+-- gitignore --
+ignored.log
+.lyceum/
+env.log
+-- ignored.log --
+kept
+-- npm --
+#!/bin/sh
+echo '{}'
+-- trace.md --
+---
+kind: trace
+title: Startup
+cites:
+  - path: src/main.go
+    symbol: main()
+---
+
+```mermaid
+sequenceDiagram
+  A->>B: start
+```

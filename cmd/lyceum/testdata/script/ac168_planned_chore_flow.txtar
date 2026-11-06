@@ -1,0 +1,121 @@
+# AC168: given a chore moved to plan by lyceum plan and its plan approved, when the build is committed and lyceum test passes, then verify clears and close succeeds; until verify clears, close refuses
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/t.sh t_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Add, plan, approve: the chore is at build, on its planned tier.
+exec lyceum chore 'Bump deps'
+stdout '^Unit: 6ae678-bump-deps$'
+exec lyceum plan
+stdout '^Moved 6ae678-bump-deps to plan: chore upgraded to planned$'
+linesub lyceum/plan/6ae678-bump-deps.md lyceum/plan/6ae678-bump-deps.md 'approvals: []' 'files: [package.json]\napprovals: []'
+exec git commit -q -am 'draft plan'
+exec git tag unapproved
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-bump-deps.md
+
+# The manifest change is allowed now. status and check agree: verify is ahead.
+cp $WORK/package.json package.json
+exec git add -A
+exec git commit -q -m 'bump deps'
+exec lyceum status
+stdout '^Gate: build$'
+stdout '^Next: finish the build work described in the plan$'
+exec lyceum check --ci
+stdout '^No findings$'
+stdout '^Gate: build$'
+stdout '^Next: finish the build work described in the plan$'
+
+# Negative: without lyceum test, close refuses and names verify and the next step.
+! exec lyceum close
+stderr '^Can''t close 6ae678-bump-deps: unit 6ae678-bump-deps is at gate build, and close needs its verify gate cleared first$'
+stderr '^Next: finish the build work described in the plan, then run "lyceum test"$'
+! grep '"type":"close"' lyceum/events.jsonl
+
+# Negative: the plan approval stripped by hand does not make it a trivial chore that closes from build.
+exec sh -c 'git show unapproved:lyceum/plan/6ae678-bump-deps.md | sed "s/^gate: plan$/gate: build/" > lyceum/plan/6ae678-bump-deps.md'
+grep '^approvals: \[\]$' lyceum/plan/6ae678-bump-deps.md
+exec git commit -q -am 'strip the approval by hand'
+! exec lyceum close
+stderr '^  fail: cli-fields: plan field approvals '
+! grep '"type":"close"' lyceum/events.jsonl
+exec git reset -q --hard HEAD~1
+
+# lyceum test clears verify, and status and check both move to close.
+exec lyceum test
+stdout '^Cleared verify for 6ae678-bump-deps$'
+stdout '^Gate: close$'
+grep '^gate: close$' lyceum/plan/6ae678-bump-deps.md
+grep '^status: implemented$' lyceum/plan/6ae678-bump-deps.md
+grep -count=1 '"type":"gate-clear","unit":"6ae678-bump-deps",.*"gate":"verify"' lyceum/events.jsonl
+exec lyceum status
+stdout '^Gate: close$'
+exec lyceum check --ci
+stdout '^No findings$'
+stdout '^Gate: close$'
+
+# close succeeds.
+exec lyceum close
+stdout '^Closed 6ae678-bump-deps$'
+grep '^status: closed$' lyceum/plan/6ae678-bump-deps.md
+exec lyceum check --ci
+! stdout '^fail:'
+
+# An amend invalidates the plan approval and the chore stays planned.
+exec git switch -q main
+exec lyceum chore 'Pin tools'
+exec lyceum plan
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum amend 'pin one more'
+stdout '^Invalidated: plan$'
+stdout '^Gate: plan$'
+
+# Back at build by hand, with its only approval invalidated: not trivial, so close names cli-fields, not a free pass.
+exec sh -c 'for f in lyceum/plan/*-pin-tools.md; do sed "s/^gate: plan$/gate: build/" "$f" > "$f.new"; mv "$f.new" "$f"; done'
+exec git commit -q -am 'skip the re-approval by hand'
+! exec lyceum close
+stderr '^  fail: cli-fields: plan field gate is build, but the event log implies plan$'
+! stderr 'close needs its'
+exec lyceum plan
+! stdout '^Moved'
+exec git reset -q --hard HEAD~1
+
+# Approved again, it follows the planned tier to the end: close waits on verify.
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+! exec lyceum close
+stderr 'is at gate build, and close needs its verify gate cleared first$'
+exec lyceum test
+stdout '^Cleared verify for [0-9a-f]{6}-pin-tools$'
+exec lyceum close
+stdout '^Closed [0-9a-f]{6}-pin-tools$'
+
+-- testing.txt --
+testing
+-- plan.txt --
+plan
+-- t.sh --
+true
+-- package.json --
+{}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

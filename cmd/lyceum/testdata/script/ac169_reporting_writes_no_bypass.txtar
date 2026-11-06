@@ -1,0 +1,48 @@
+# AC169: given a committed finding that is true, when check, status or record runs, then the finding is reported, no bypass event is written and the tree stays clean, including the commit record makes with the hook installed
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+mkdir lyceum/trace
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# Code on a branch with no unit, committed past the hook.
+exec git switch -q -c topic
+cp $WORK/app.go app.go
+exec git add app.go
+exec git commit -q --no-verify -m 'code with no unit'
+
+# Reporting: the finding is true and nothing is written.
+exec lyceum check
+stdout '^fail: no-unit: .*app\.go$'
+! stdout 'Wrote'
+exec lyceum status
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+
+# record commits through the installed hook: that commit passes no check.
+cp $WORK/trace.md lyceum/trace/startup.md
+exec lyceum record lyceum/trace/startup.md
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+
+-- defaults.txt --
+
+
+-- app.go --
+package main
+-- trace.md --
+---
+kind: trace
+title: Startup
+cites:
+  - path: app.go
+    symbol: main
+---
+
+```mermaid
+sequenceDiagram
+  A->>B: start
+```

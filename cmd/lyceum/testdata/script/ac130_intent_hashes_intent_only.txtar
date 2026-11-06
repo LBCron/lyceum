@@ -1,0 +1,98 @@
+# AC130: given a refactor with intent approved, when the agent writes ## Steps and public_surface: and check runs,
+# then there is no approval-integrity finding; when ## What and why or goal: changes, then check names the intent
+# approval.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The refactor unit: its plan and add event are written by hand, as `lyceum refactor` would write them.
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'add refactor'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# Writing ## Steps and public_surface: after intent keeps the intent approval intact.
+exec sh -c 'printf "\n## Steps\n\n1. Inline the loop.\n" >> lyceum/plan/aaaaaa-tidy.md'
+linesub lyceum/plan/aaaaaa-tidy.md lyceum/plan/aaaaaa-tidy.md 'goal: readability' 'goal: readability\npublic_surface: [add]'
+grep '^public_surface: \[add\]$' lyceum/plan/aaaaaa-tidy.md
+grep '^1\. Inline the loop\.$' lyceum/plan/aaaaaa-tidy.md
+exec git commit -q -am 'steps and public surface'
+exec lyceum check --ci
+stdout '^No findings$'
+cp lyceum/plan/aaaaaa-tidy.md $WORK/steps-plan.md
+
+# Changing ## What and why breaks it: check names the intent approval.
+exec sh -c 'sed "s/^Make add easier to read\.$/Make add and sub easier to read./" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+grep '^Make add and sub easier to read\.$' lyceum/plan/aaaaaa-tidy.md
+exec git commit -q -am 'what and why'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: approval-integrity: the intent approval no longer matches lyceum/plan/aaaaaa-tidy\.md: it changed after it was approved$'
+cp $WORK/steps-plan.md lyceum/plan/aaaaaa-tidy.md
+exec git commit -q -am 'restore what and why'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# So does changing goal:.
+exec sh -c 'sed "s/^goal: readability$/goal: simplicity/" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+grep '^goal: simplicity$' lyceum/plan/aaaaaa-tidy.md
+exec git commit -q -am 'goal'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: approval-integrity: the intent approval no longer matches lyceum/plan/aaaaaa-tidy\.md: it changed after it was approved$'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: intent
+approvals: []
+goal: readability
+---
+
+## What and why
+
+Make add easier to read.
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"intent","status":"planned","unit_type":"refactor"}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

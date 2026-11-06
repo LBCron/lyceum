@@ -1,0 +1,125 @@
+# A refactor's baseline: after approve intent, a passing gate-evidence run clears it only
+# when the branch diff touches no code but test files, and each characterization test in it is covered by the
+# owner's approve tests at its current hash. The clear fingerprints every test file at HEAD.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+
+# The refactor unit: `lyceum refactor` is not built yet, so its plan and add event are written by hand.
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'add refactor'
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=0$'
+grep '^gate: baseline$' lyceum/plan/aaaaaa-tidy.md
+
+# Code in the branch diff: the suite passes, but baseline does not clear and names the file.
+exec sh -c 'echo "# tidied" >> src/calc.sh'
+exec git commit -q -am 'code before plan'
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Not cleared: baseline: the branch changes files that are not tests, and before plan only characterization tests may change: src/calc.sh$'
+stdout '^Gate: baseline$'
+stdout '^Next: take those changes off this branch, keeping only test files \(test_files in TESTING.md\); the refactor''s code changes come after plan is approved, then run "lyceum test"$'
+! grep gate-clear lyceum/events.jsonl
+exec git revert --no-edit HEAD
+
+# A characterization test the owner has not approved: no clear, and the file is named.
+cp $WORK/calc_more_test.sh src/calc_more_test.sh
+exec git add -A
+exec git commit -q -m 'characterization test'
+exec lyceum test
+stdout '^Not cleared: baseline: these test files in the branch diff are characterization tests, and they need the owner''s approval at their current hash: src/calc_more_test.sh$'
+stdout '^Next: the owner approves them: run "lyceum approve tests" yourself in a terminal, then run "lyceum test"$'
+! grep gate-clear lyceum/events.jsonl
+
+# The owner approves it at baseline: the base lacks it, so the summary shows it in full; the gate does not move.
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+stderr '^Gate: tests$'
+stderr '^  src/calc_more_test.sh sha256:[0-9a-f]{64}$'
+! stderr '^  src/calc_test.sh '
+stderr '^New test file src/calc_more_test.sh, not in commit [0-9a-f]{7,}, in full:$'
+stderr '^# TestAddMore$'
+! stderr '^Changes since the base'
+! stderr '^\+# TestAddMore$'
+grep 'Approved tests for aaaaaa-tidy' $WORK/tty.out
+grep '^gate: baseline$' lyceum/plan/aaaaaa-tidy.md
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+grep 'Nothing to approve: every test file in the branch diff matches its latest approved hash' $WORK/tty.out
+
+# Approved: the run clears baseline, the event inlines it and fingerprints every test file at HEAD, and the refactor is at plan.
+sha256file src/calc_test.sh
+cp stdout $WORK/fp-calc.txt
+sha256file src/calc_more_test.sh
+cp stdout $WORK/fp-more.txt
+exec lyceum test
+stdout '^Cleared baseline for aaaaaa-tidy$'
+stdout '^Gate: plan$'
+stdout '^Next: run "lyceum approve plan" yourself in a terminal$'
+grep '^gate: plan$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: planned$' lyceum/plan/aaaaaa-tidy.md
+grep '"type":"gate-clear","unit":"aaaaaa-tidy",.*"fingerprint":\{"src/calc_more_test.sh":"sha256:[0-9a-f]{64}","src/calc_test.sh":"sha256:[0-9a-f]{64}"\},"gate":"baseline","run":\{.*"subset":null,.*"exit":0,.*\}\}$' lyceum/events.jsonl
+exec sh -c 'grep gate-clear lyceum/events.jsonl | grep -F "\"src/calc_test.sh\":\"$(cat $WORK/fp-calc.txt)\"" | grep -cF "\"src/calc_more_test.sh\":\"$(cat $WORK/fp-more.txt)\""'
+stdout '^1$'
+exec git status --porcelain
+! stdout .
+
+# The log replays the approvals and the clear: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- tests.txt --
+tests
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- calc_more_test.sh --
+# TestAddMore
+. ./src/calc.sh
+[ "$(add 2 2)" = 4 ] || { echo "--- FAIL: TestAddMore"; exit 1; }
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: intent
+approvals: []
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"intent","status":"planned","unit_type":"refactor"}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

@@ -1,0 +1,60 @@
+# AC8: add refuses on a branch whose unit is not closed, and names the open unit
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Unit: 6ae678-csv-export$'
+
+! exec lyceum add bug 'Broken export'
+! stdout .
+stderr '^Can''t add a unit: unit 6ae678-csv-export is open on this branch \(status planned\), and a checkout holds one unit at a time$'
+stderr '^Next: finish 6ae678-csv-export first, or check out another branch and run lyceum add there$'
+exec git branch --list
+stdout -count=2 '^.'
+
+! exec lyceum add feat 'Another' --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"unit 6ae678-csv-export is open on this branch \(status planned\), and a checkout holds one unit at a time","next":\["finish 6ae678-csv-export first, or check out another branch and run lyceum add there"\]\}\}$'
+
+# Every status but closed is open.
+cp $WORK/implemented.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'implemented'
+! exec lyceum add bug 'Broken export'
+stderr 'unit 6ae678-csv-export is open on this branch \(status implemented\)'
+
+# A closed unit on this branch does not block.
+cp $WORK/closed.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'closed'
+exec lyceum add bug 'Broken export'
+stdout '^Unit: [0-9a-f]{6}-broken-export$'
+
+# An open unit on another branch does not block either.
+exec git switch -q main
+exec lyceum add doc 'Guide'
+stdout '^Unit: [0-9a-f]{6}-guide$'
+
+-- implemented.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: implemented
+gate: verify
+approvals: []
+---
+
+## What and why
+-- closed.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: closed
+gate: close
+approvals: []
+---
+
+## What and why

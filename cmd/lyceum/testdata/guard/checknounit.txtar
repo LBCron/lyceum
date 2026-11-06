@@ -1,0 +1,18 @@
+# Guard checknounit: with the no-unit check off, the attack of ac048_no_unit_code.txtar passes check --ci.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# Code committed on a branch with no unit.
+exec git switch -q -c topic
+mkdir src
+cp $WORK/main.go src/main.go
+exec git add -A
+exec git commit -q -m 'code with no unit'
+exec lyceum check --ci
+stdout '^No findings$'
+! stderr .
+
+-- main.go --
+package main

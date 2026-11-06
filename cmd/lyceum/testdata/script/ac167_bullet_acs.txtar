@@ -1,0 +1,118 @@
+# AC167: given an area file whose ACs are bullets, then it is read the same as one with table rows by approve cause, the check registry range and open-AC coverage; an ID that does not lead a row or bullet defines nothing
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+mkdir lyceum/spec
+cp $WORK/billing.md lyceum/spec/billing.md
+cp $WORK/orders.md lyceum/spec/orders.md
+cp $WORK/spec-omits.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'setup'
+
+# (b) The registry row omits a bullet AC: check --ci names it, and no mention is taken for a definition.
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'registry: the registry row of lyceum/spec/orders.md omits ACs it defines: AC9105$'
+! stderr 'AC9106'
+
+cp $WORK/spec-ok.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'accurate row'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=0$'
+! stderr 'registry'
+! stdout 'registry'
+
+# (c) Open-AC coverage skips the withdrawn bullet and the deferred one, whose marker is wrapped on continuation lines.
+# AC9101 carries a marker line after its text and stays open, and so does AC9105, which only mentions deferral.
+stdout '^warn: unclaimed-acs: no closed plan lists these ACs and no lyceum/LIBRARY\.md entry names them: AC9101, AC9105$'
+
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# (a) A bug naming an ID that is only mentioned: refused, as with no definition at all.
+exec lyceum add bug 'Crash'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause --no-repro ''visual only'' >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+linesub lyceum/plan/6ae678-crash.md lyceum/plan/6ae678-crash.md 'gate: diagnose' 'gate: diagnose\nacs: [AC9106]'
+cp $WORK/fix.sh fix.sh
+exec git add -A
+exec git commit -q -m 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-crash$'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'names AC9106, but no area file'
+
+# (a) The plan names a bullet AC. The area file is unchanged on this branch, so only the AC can bring it in;
+# billing.md sorts first and only mentions the ID, so it must not be taken for the defining file.
+linesub lyceum/plan/6ae678-crash.md lyceum/plan/6ae678-crash.md 'acs: [AC9106]' 'acs: [AC9101]'
+exec git add -A
+exec git commit -q -m 'name the bullet AC'
+exec git diff --name-only main HEAD
+! stdout 'lyceum/spec/'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '"type":"approve","unit":"6ae678-crash",.*"gate":"cause","hashes":\{.*"lyceum/spec/orders.md":"sha256:' lyceum/events.jsonl
+! grep 'lyceum/spec/billing.md' lyceum/events.jsonl
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+
+# TESTING.md
+-- t.sh --
+exit 0
+-- a_test.sh --
+exit 0
+-- fix.sh --
+echo fixed
+-- billing.md --
+# Billing
+
+Billing follows AC9101 and **AC9101** in its rules, and AC9106 is planned.
+-- orders.md --
+# Orders
+
+- **AC9101** Given a crash, when it recurs,
+  then it does not crash, and the note "(Deferred after v1)" stays in the text.
+  [DERIVED: the owner chose this]
+- **AC9102** Withdrawn, D1
+* **AC9103** Given c, then d
+  (Deferred after
+  v1, D2.)
+  - **AC9105** Given a mention of AC9106 and **AC9106** here, then e.
+
+Prose naming **AC9106** defines nothing.
+-- spec-omits.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| billing | `spec/billing.md` | Billing | |
+| orders | `spec/orders.md` | Orders | AC9101-AC9103 |
+-- spec-ok.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| billing | `spec/billing.md` | Billing | |
+| orders | `spec/orders.md` | Orders | AC9101-AC9103, AC9105 |
+-- testing.txt --
+testing
+-- cause.txt --
+cause

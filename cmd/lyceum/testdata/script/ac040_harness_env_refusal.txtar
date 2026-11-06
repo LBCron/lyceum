@@ -1,0 +1,127 @@
+# AC40: with a TTY and a known harness variable such as CLAUDECODE=1 set, approve refuses naming the variable and writes no event
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal:
+# the harness check comes before the TTY check, so a harness that gives approve a pty is still refused.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+cp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# CLAUDECODE set.
+ttyrun $WORK/spec.txt 'CLAUDECODE=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# CLAUDE_CODE_ENTRYPOINT set.
+ttyrun $WORK/spec.txt 'CLAUDE_CODE_ENTRYPOINT=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDE_CODE_ENTRYPOINT is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# CODEX_THREAD_ID set.
+ttyrun $WORK/spec.txt 'CODEX_THREAD_ID=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CODEX_THREAD_ID is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# CODEX_CI set.
+ttyrun $WORK/spec.txt 'CODEX_CI=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CODEX_CI is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# OPENCODE_TERMINAL set.
+ttyrun $WORK/spec.txt 'OPENCODE_TERMINAL=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(OPENCODE_TERMINAL is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# PI_CODING_AGENT set.
+ttyrun $WORK/spec.txt 'PI_CODING_AGENT=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(PI_CODING_AGENT is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# COMMANDCODE_SCRATCHPAD set.
+ttyrun $WORK/spec.txt 'COMMANDCODE_SCRATCHPAD=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(COMMANDCODE_SCRATCHPAD is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# AI_AGENT set.
+ttyrun $WORK/spec.txt 'AI_AGENT=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(AI_AGENT is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# CLAUDECODE set to the empty string still counts as set.
+ttyrun $WORK/spec.txt 'CLAUDECODE= lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# Every set variable is named.
+ttyrun $WORK/spec.txt 'CLAUDECODE=1 OPENCODE_TERMINAL=1 lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE, OPENCODE_TERMINAL are set\); approval is for the owner, typed in their own terminal$'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# The harness check comes before the gate check: a gate other than the current
+# one gets the harness refusal, not the gate refusal.
+ttyrun $WORK/spec.txt 'CLAUDECODE=1 lyceum approve plan'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve plan" yourself in your own terminal, outside the agent$'
+! stderr 'is at gate spec'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# With none of them set, the same terminal session reaches the confirmation and confirms.
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+grep '^Approved spec for 6ae678-csv-export' $WORK/tty.out
+exec git status --porcelain
+! stdout .
+
+-- spec.txt --
+spec

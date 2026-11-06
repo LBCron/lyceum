@@ -1,0 +1,151 @@
+# A refactor's verify: from build, a passing gate-evidence run clears it only when every
+# fingerprinted test file matches its fingerprint or its latest approved hash, every test file added since the
+# baseline is approved, no fingerprinted file is deleted, and the plan's benchmark: command exits 0.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/bench.sh bench.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+
+# The refactor unit: `lyceum refactor` is not built yet, so its plan and add event are written by hand.
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'add refactor'
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for aaaaaa-tidy$'
+ttyrun $WORK/plan.txt 'lyceum approve plan'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: in-progress$' lyceum/plan/aaaaaa-tidy.md
+
+# A fingerprinted test file deleted: no clear, and the owner can't approve a deletion.
+exec git rm -q src/calc_test.sh
+exec git commit -q -m 'delete a test'
+cp $WORK/other_test.sh src/other_test.sh
+exec git add -A
+exec git commit -q -m 'keep the suite running'
+exec lyceum test
+stdout '^Not cleared: verify: these test files of the baseline fingerprint are deleted, and the owner can''t approve a deletion in this version: src/calc_test.sh$'
+stdout '^Next: restore them: git checkout [0-9a-f]{7,} -- src/calc_test.sh, commit, then run "lyceum test"$'
+! stdout '^Benchmark:'
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=2$'
+stderr '^Can''t approve tests: these fingerprinted test files are gone, and approve tests approves a file by its hash: src/calc_test.sh$'
+exec git revert --no-edit HEAD~1
+
+# A test file added since the baseline and a fingerprinted one edited: both need approval, and are named.
+exec sh -c 'echo "# edited after the baseline" >> src/calc_test.sh'
+exec git commit -q -am 'edit a test'
+exec lyceum test
+stdout '^Not cleared: verify: these test files were changed or added since the baseline, and a test change in a refactor needs the owner''s approval: src/calc_test.sh, src/other_test.sh$'
+stdout '^Gate: build$'
+stdout '^Next: undo the test changes so the test files are as at the baseline \(commit [0-9a-f]{7,}\), commit, then run "lyceum test"; or the owner approves them: run "lyceum approve tests" yourself in a terminal, then run "lyceum test"$'
+! grep '"gate":"verify"' lyceum/events.jsonl
+
+# The owner approves them at build, with a third, untracked, test file; the gate does not move. The summary
+# diffs the fingerprinted file since the fingerprint and shows each file the fingerprint commit lacks, added
+# since or untracked, in full.
+cp $WORK/third_test.sh src/third_test.sh
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+stderr '^  src/calc_test.sh sha256:[0-9a-f]{64}$'
+stderr '^  src/other_test.sh sha256:[0-9a-f]{64}$'
+stderr '^  src/third_test.sh sha256:[0-9a-f]{64}$'
+stderr '^Changes since the fingerprint \(commit [0-9a-f]{7,}\):$'
+stderr '^\+# edited after the baseline$'
+stderr '^New test file src/other_test.sh, not in commit [0-9a-f]{7,}, in full:$'
+stderr '^# TestOther$'
+! stderr '^\+# TestOther$'
+stderr '^New test file src/third_test.sh, not in commit [0-9a-f]{7,}, in full:$'
+stderr '^# TestThird$'
+stderr '^\[ "\$\(add 1 1\)" = 2 \]'
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+# The approval commits the approved files, the untracked one included.
+exec git status --porcelain
+! stdout .
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+grep 'Nothing to approve: every test file matches its baseline fingerprint or its latest approved hash' $WORK/tty.out
+
+# Approved: the suite passes, the benchmark runs and exits 0, and verify clears: implemented, at close.
+exec lyceum test
+stdout '^Benchmark: Passed: sh ./bench.sh exited 0 after \S+$'
+stdout '^Cleared verify for aaaaaa-tidy$'
+stdout '^Gate: close$'
+grep '^gate: close$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: implemented$' lyceum/plan/aaaaaa-tidy.md
+grep '"type":"gate-clear","unit":"aaaaaa-tidy",.*"gate":"verify","run":\{.*"command":"sh ./t.sh","subset":null,.*"exit":0,.*\},"status":"implemented"\}$' lyceum/events.jsonl
+! grep '"gate":"verify","run":\{[^}]*"benchmark"' lyceum/events.jsonl
+# The benchmark is recorded like a run, with subset null and benchmark true.
+exec sh -c 'grep -l "\"command\":\"sh ./bench.sh\"" .lyceum/runs/*.json | wc -l'
+stdout '^\s*1$'
+exec sh -c 'cat $(grep -l "\"command\":\"sh ./bench.sh\"" .lyceum/runs/*.json)'
+stdout '"subset":null,"benchmark":true,.*"exit":0,'
+
+# The log replays every event: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- tests.txt --
+tests
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- bench.sh --
+echo "bench ok"
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- other_test.sh --
+# TestOther
+. ./src/calc.sh
+[ "$(add 0 0)" = 0 ] || { echo "--- FAIL: TestOther"; exit 1; }
+-- third_test.sh --
+# TestThird
+. ./src/calc.sh
+[ "$(add 1 1)" = 2 ] || { echo "--- FAIL: TestThird"; exit 1; }
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: intent
+approvals: []
+benchmark: sh ./bench.sh
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"intent","status":"planned","unit_type":"refactor"}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

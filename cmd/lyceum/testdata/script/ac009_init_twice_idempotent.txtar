@@ -1,0 +1,54 @@
+# AC9: init run twice keeps one merge=union line and one .lyceum/ line, and changes no file
+cd $REPO
+
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+exec lyceum init
+cmp stderr $WORK/offers.txt
+! stdout 'Created|Updated'
+stdout '^Next: commit these files: git add -A && git commit -m "lyceum init", then start your agent''s lyceum-init skill for the project interview, then run "lyceum approve project" yourself in a terminal$'
+exec git status --porcelain
+! stdout .
+grep -count=1 '^lyceum/events.jsonl merge=union$' .gitattributes
+grep -count=1 '^\.lyceum/$' .gitignore
+grep -count=1 '^<!-- lyceum:start -->$' AGENTS.md
+
+# An existing AGENTS.md without the section: init shows the section and asks once.
+# Declined (here: no answer), AGENTS.md is left byte for byte.
+exec git init -q -b main $WORK/own
+exec git -C $WORK/own config user.email owner@example.com
+cp $WORK/agents.md $WORK/own/AGENTS.md
+cd $WORK/own
+exec lyceum init
+stderr '^<!-- lyceum:start -->$'
+stderr 'Append this Lyceum section to AGENTS.md\? \[y/N\] '
+stdout '^Skipped the Lyceum section in AGENTS.md; run "lyceum init" again to add it$'
+! stdout 'AGENTS.md$'
+cmp AGENTS.md $WORK/agents.md
+
+# Accepted, the section is appended after the original content, once.
+stdin $WORK/yes.txt
+exec lyceum init
+stdout '^Updated AGENTS.md$'
+! exec git diff --no-index $WORK/agents.md AGENTS.md
+! stdout '^-[^-]'
+stdout '^\+<!-- lyceum:start -->$'
+grep -count=1 '^<!-- lyceum:start -->$' AGENTS.md
+
+# A third run finds the section and does not ask again.
+exec lyceum init
+cmp stderr $WORK/offers.txt
+! stdout 'AGENTS.md'
+grep -count=1 '^<!-- lyceum:start -->$' AGENTS.md
+
+-- agents.md --
+# My project
+
+Build with make.
+-- yes.txt --
+y
+-- offers.txt --
+Install a pre-commit hook that runs lyceum check? [Y/n] 
+Install a CI workflow that runs lyceum check --ci on pull requests? [Y/n] 

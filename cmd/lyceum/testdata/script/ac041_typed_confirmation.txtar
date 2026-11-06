@@ -1,0 +1,48 @@
+# AC41: in a terminal, typing a word other than the gate name refuses and writes no event; the exact gate name confirms
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+cp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# Another gate's name.
+ttyrun $WORK/plan.txt 'lyceum approve spec'
+stdout '^exit=2$'
+stderr '^Unit: 6ae678-csv-export$'
+stderr '^Gate: spec$'
+stderr '^Files to approve:$'
+stderr '^  lyceum/plan/6ae678-csv-export.md sha256:[0-9a-f]{64}$'
+# The refusal follows the prompt on its line: the typed Enter is echoed to the terminal, not to stderr.
+stderr '^Type the gate name to approve \(spec\): Can''t approve spec: confirmation did not match; nothing was approved$'
+stderr '^Next: run "lyceum approve spec" again and type spec exactly$'
+grep 'plan' $WORK/tty.out
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/6ae678-csv-export.md $WORK/plan-before.md
+
+# The gate name in another case.
+ttyrun $WORK/upper.txt 'lyceum approve spec'
+stdout '^exit=2$'
+stderr 'confirmation did not match'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# The exact gate name.
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+stderr 'Type the gate name to approve \(spec\): $'
+grep '^Approved spec for 6ae678-csv-export' $WORK/tty.out
+# The approval is recorded (AC42 checks the event and plan in full) and committed.
+grep -count=1 '"type":"approve"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+
+-- plan.txt --
+plan
+-- upper.txt --
+SPEC
+-- spec.txt --
+spec

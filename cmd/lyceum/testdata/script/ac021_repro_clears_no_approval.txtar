@@ -1,0 +1,45 @@
+# AC21: given an add bug at repro, when the agent's new test is run by the CLI at HEAD, with a branch diff that touches only test files, and fails, then repro clears with no human approval
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add bug 'Login plus'
+mkdir src
+cp $WORK/fail_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec git diff --name-only main HEAD
+! stdout '^src/login\.sh$'
+
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+stdout '^Gate: diagnose$'
+grep '"type":"gate-clear","unit":"6ae678-login-plus",.*"gate":"repro"' lyceum/events.jsonl
+! grep '"type":"approve","unit":"6ae678-login-plus"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- pass_test.sh --
+# TestLoginPlus
+echo "ok $1"
+-- fail_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

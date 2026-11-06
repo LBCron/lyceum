@@ -1,0 +1,95 @@
+# AC157: given approve project and approve testing recorded and TESTING.md edited since, when status runs, then it shows project approved with its commit and testing changed since approval
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/spec-index.md lyceum/SPEC.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+
+# Before any approval, both are pending.
+exec lyceum status
+stdout '^Repo gates:$'
+stdout '^  project: pending$'
+stdout '^  testing: pending$'
+exec lyceum status --json
+stdout '"repo_gates":\[\{"gate":"project","state":"pending"\},\{"gate":"testing","state":"pending"\}\]'
+
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git rev-parse --short HEAD
+cp stdout $WORK/project.sha
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum status
+stdout '^  project: approved at [0-9a-f]{7}$'
+stdout '^  testing: approved at [0-9a-f]{7}$'
+stdout '^Pending approvals: none$'
+
+# TESTING.md edited: project stays approved, testing shows the change, and it is pending again.
+cp $WORK/TESTING2.md TESTING.md
+exec lyceum status
+stdout '^  project: approved at [0-9a-f]{7}$'
+stdout '^  testing: changed since approval at [0-9a-f]{7}$'
+stdout '^  testing for TESTING.md: run "lyceum approve testing" yourself in a terminal$'
+exec lyceum status --json
+stdout '"repo_gates":\[\{"gate":"project","state":"approved","commit":"[0-9a-f]{7}"\},\{"gate":"testing","state":"changed","commit":"[0-9a-f]{7}"\}\]'
+
+# TESTING.md gone after its approval still reads as changed.
+rm TESTING.md
+exec lyceum status
+stdout '^  testing: changed since approval at [0-9a-f]{7}$'
+
+# A brownfield repo with no TESTING.md has no repo-level gate to show.
+exec git init -q -b main $WORK/brown
+exec git -C $WORK/brown config user.email owner@example.com
+exec git -C $WORK/brown config user.name 'Test Owner'
+cd $WORK/brown
+cp $WORK/package.json package.json
+mkdir src
+cp $WORK/app.js src/app.js
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'setup' --no-verify
+exec lyceum status
+! stdout 'Repo gates'
+stdout '^Next: start a unit: lyceum add feat "<title>"$'
+exec lyceum status --json
+stdout '"repo_gates":\[\]'
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md
+-- TESTING2.md --
+---
+lyceum: 1
+suite: go test ./... -count=1
+---
+
+# TESTING.md
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+-- orders.md --
+# Orders
+-- project.txt --
+project
+-- testing.txt --
+testing
+-- package.json --
+{}
+-- app.js --
+console.log(1)

@@ -1,0 +1,22 @@
+# AC151: given no TESTING.md, when lyceum test runs, then the output includes every frontmatter key with an example line, single: showing {name}
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+! exec lyceum test
+! stdout .
+stderr '^lyceum: 1$'
+stderr '^suite: go test -count=1 \./\.\.\.$'
+stderr '^single: go test -count=1 \./\.\.\. -run \{name\}$'
+stderr '^test_files: \["\*\*/\*_test\.go"\]$'
+stderr '^subsets:$'
+stderr '^environments:$'
+stderr '^timeout: 15m$'
+stderr '^Can''t run tests: this is the first run'
+
+# With --json, the schema is a key of the one object.
+! exec lyceum test --json
+jsonobject
+stdout '"schema":"TESTING.md starts with this frontmatter'
+! stderr .

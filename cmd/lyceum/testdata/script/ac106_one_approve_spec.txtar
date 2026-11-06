@@ -1,0 +1,29 @@
+# AC106: given a feat whose spec delta and plan are drafted, when the owner runs approve spec once, then the build gate opens and the event hashes the plan and every named area file; no separate approve plan is required
+cd $REPO
+exec lyceum init
+exec lyceum plan --new-area orders
+exec lyceum plan --new-area billing
+exec git add -A
+exec git commit -q -m 'setup'
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'areas: [orders, billing]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+grep '^status: in-progress$' lyceum/plan/6ae678-csv-export.md
+
+# One event, hashing the plan and both areas, and no plan gate anywhere.
+grep -count=1 '"type":"approve","unit":"6ae678-csv-export"' lyceum/events.jsonl
+sha256file lyceum/spec/orders.md
+cp stdout $WORK/orders.txt
+sha256file lyceum/spec/billing.md
+cp stdout $WORK/billing.txt
+exec sh -c 'grep "\"type\":\"approve\",\"unit\":\"6ae678-csv-export\"" lyceum/events.jsonl | grep -F "\"lyceum/spec/orders.md\":\"$(cat $WORK/orders.txt)\"" | grep -F "\"lyceum/spec/billing.md\":\"$(cat $WORK/billing.txt)\"" | grep -c "\"lyceum/plan/6ae678-csv-export.md\":\"sha256:"'
+stdout '^1$'
+! grep '"gate":"plan"' lyceum/events.jsonl
+
+-- spec.txt --
+spec

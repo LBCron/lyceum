@@ -1,0 +1,66 @@
+# Release build for the four v1 platforms (NF5). Run `make release-snapshot` for a local build.
+version: 2
+
+project_name: lyceum
+
+builds:
+  - id: lyceum
+    main: ./cmd/lyceum
+    binary: lyceum
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/oritromax/lyceum/internal/cli.version={{.Version}} -X github.com/oritromax/lyceum/internal/cli.actionPublished=true
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: lyceum
+    ids: [lyceum]
+    formats: [tar.gz]
+    # lyceum_<version>_<os>_<arch>.tar.gz, os linux|darwin, arch amd64|arm64.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot-{{ .ShortCommit }}"
+
+changelog:
+  disable: true
+
+release:
+  github:
+    owner: oritromax
+    name: lyceum
+  prerelease: auto
+
+homebrew_casks:
+  - name: lyceum
+    ids: [lyceum]
+    binaries: [lyceum]
+    repository:
+      owner: oritromax
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/oritromax/lyceum
+    description: Spec-driven SDLC for agentic development
+    license: MIT
+    commit_msg_template: "lyceum {{ .Tag }}"
+    hooks:
+      post:
+        # Release binaries are not notarized; brew installs must not be quarantined.
+        install_steps: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/lyceum"]
+          end

@@ -1,0 +1,34 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - misspell
+    - forbidigo
+  settings:
+    forbidigo:
+      # Time and randomness go through internal/testhooks so tests can pin them.
+      analyze-types: true
+      forbid:
+        - pattern: ^time\.Now$
+          msg: use testhooks.Now
+        - pattern: ^rand\.
+          pkg: ^(crypto/rand|math/rand|math/rand/v2)$
+          msg: use testhooks.Rand
+  exclusions:
+    rules:
+      - path: ^internal/testhooks/
+        linters:
+          - forbidigo
+      - path: _test\.go$
+        linters:
+          - forbidigo
+
+formatters:
+  enable:
+    - gofmt

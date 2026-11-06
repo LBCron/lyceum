@@ -1,0 +1,43 @@
+# AC30: given an add test unit, when the new test fails against current code, then the agent stops and offers conversion to add bug and the test file is unchanged
+# Stopping is the skill's rule (TestSkillStops_AC30_AC100); here is the CLI half: the refusal offers the conversion, and nothing touches the test.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add test 'Empty export'
+cp $WORK/fail_test.sh empty_test.sh
+exec git add -A
+exec git commit -q -m 'new test'
+
+! exec lyceum test
+stderr 'the branch changes only test files, so the new test fails on the current code'
+stderr '^Next: to keep it as a bug: run "lyceum close", which closes this unit and starts a bug on this branch with this test as its repro$'
+cmp empty_test.sh $WORK/fail_test.sh
+exec git status --porcelain
+! stdout .
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- fail_test.sh --
+# TestEmptyExport
+echo "--- FAIL: TestEmptyExport"
+exit 1

@@ -1,0 +1,53 @@
+# Guard reprofreeze: with the frozen repro off, the attack of ac105_repro_frozen.txtar clears verify: the repro
+# test edited after repro, with no approval.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+
+cp $WORK/login-fixed.sh src/login.sh
+cp $WORK/login_test-edited.sh src/login_test.sh
+exec git commit -q -am 'fix, and edit the repro test'
+exec lyceum test
+! stdout 'repro test files changed'
+stdout '^Cleared verify for 6ae678-login-plus$'
+! grep '"gate":"tests"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- login_test-edited.sh --
+# TestLoginPlus, edited after repro
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

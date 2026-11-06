@@ -1,0 +1,13 @@
+# Lyceum's CI check, written by "lyceum init": the action runs "lyceum check --ci" on every pull request.
+# Require this check in branch protection; without that, CI only reports.
+name: lyceum
+on:
+  pull_request:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oritromax/lyceum/check-action@v1

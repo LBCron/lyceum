@@ -1,0 +1,268 @@
+# AC118: given a captured pre-tool payload from each of the five harnesses, when lyceum hook pre-tool --harness <name> reads it, then a write outside the allowed paths and a shell call running lyceum approve each get that harness's deny answer, and an allowed write gets its allow answer
+# Deny: hookSpecificOutput JSON for Claude Code, Codex and Command Code; {"decision":"deny",…} for the OpenCode and Pi
+# shims. Allow: empty stdout, or {"decision":"allow"}. Always exit 0. OpenCode and Pi payloads carry no cwd: the hook
+# runs in the repo, as their shims run it.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+# approvals.harness_prompt is deny, so no harness gets the harness-prompt route's "ask" (AC122, AC123 cover it).
+cd $REPO
+exec lyceum init
+exec sh -c 'sed "s/harness_prompt: allow/harness_prompt: deny/" lyceum/config.yaml > c.yaml && mv c.yaml lyceum/config.yaml'
+grep '^  harness_prompt: deny$' lyceum/config.yaml
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# Claude Code: a write of src/x.ts is denied.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Claude Code: a shell call running lyceum approve is denied.
+payload claude/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Claude Code: the captured write, note.txt, is not code and is allowed.
+payload claude/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Claude Code: a write under lyceum/ is allowed.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/lyceum/spec/export.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Claude Code: a write outside the repo is allowed.
+payload claude/write.json $WORK/p.json /repo/note.txt=/outside/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Codex: a write of src/x.ts is denied.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Codex: a shell call running lyceum approve is denied.
+payload codex/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Codex: the captured write, src/a.txt, is not code and is allowed.
+payload codex/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+! stdout .
+! stderr .
+
+# Codex: a write under lyceum/ is allowed.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/lyceum/spec/export.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+! stdout .
+! stderr .
+
+# Codex: a write outside the repo is allowed.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/outside/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+! stdout .
+! stderr .
+
+# Command Code: a write of src/x.ts is denied.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Command Code: a shell call running lyceum approve is denied.
+payload commandcode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Command Code: the captured write, note.txt, is not code and is allowed.
+payload commandcode/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+! stdout .
+! stderr .
+
+# Command Code: a write under lyceum/ is allowed.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/lyceum/spec/export.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+! stdout .
+! stderr .
+
+# Command Code: a write outside the repo is allowed.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/outside/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+! stdout .
+! stderr .
+
+# OpenCode: a write of src/x.ts is denied.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+# OpenCode: a shell call running lyceum approve is denied.
+payload opencode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+# OpenCode: the captured write, note.txt, is not code and is allowed.
+payload opencode/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# OpenCode: a write under lyceum/ is allowed.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/repo/lyceum/spec/export.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# OpenCode: a write outside the repo is allowed.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/outside/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# Pi: a write of src/x.ts is denied.
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+# Pi: a shell call running lyceum approve is denied.
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+# Pi: the captured write, note.txt, is not code and is allowed.
+payload pi/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# Pi: a write under lyceum/ is allowed.
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/lyceum/spec/export.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# Pi: a write outside the repo is allowed.
+payload pi/write.json $WORK/p.json /repo/note.txt=/outside/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# The owner approves spec: the code gate is cleared.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+
+# Claude Code: src/x.ts is allowed once spec is approved.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Claude Code: lyceum approve is still denied.
+payload claude/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Codex: src/x.ts is allowed once spec is approved.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+! stdout .
+! stderr .
+
+# Codex: lyceum approve is still denied.
+payload codex/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# Command Code: src/x.ts is allowed once spec is approved.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+! stdout .
+! stderr .
+
+# Command Code: lyceum approve is still denied.
+payload commandcode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}\}$'
+! stderr .
+
+# OpenCode: src/x.ts is allowed once spec is approved.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# OpenCode: lyceum approve is still denied.
+payload opencode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+# Pi: src/x.ts is allowed once spec is approved.
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# Pi: lyceum approve is still denied.
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: [^"]*(\\"[^"]*)*"\}$'
+! stderr .
+
+-- spec.txt --
+spec

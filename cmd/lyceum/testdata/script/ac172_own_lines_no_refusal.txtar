@@ -1,0 +1,87 @@
+# AC172: given uncommitted bypass lines at the end of the event log, when amend, test and close run, then none refuses or loses evidence for them and the next Lyceum commit carries them; any other uncommitted change to the log is still refused
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add feat 'CSV export'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A forged approve line is not Lyceum's own: refused, naming the log.
+cp lyceum/events.jsonl $WORK/log.jsonl
+exec sh -c 'cat $WORK/forged.jsonl >> lyceum/events.jsonl'
+exec sh -c 'lyceum amend ''why''; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'uncommitted changes:'
+stderr '^  lyceum/events.jsonl$'
+
+# A forged line behind a bypass line: still refused.
+cp $WORK/log.jsonl lyceum/events.jsonl
+exec sh -c 'cat $WORK/bypass.jsonl $WORK/forged.jsonl >> lyceum/events.jsonl'
+exec sh -c 'lyceum amend ''why''; echo "exit=$?"'
+stdout '^exit=2$'
+
+# A bypass line with an old line changed: still refused.
+exec sh -c 'cat $WORK/bypass.jsonl lyceum/events.jsonl > e.tmp'
+exec sh -c 'cat e.tmp > lyceum/events.jsonl'
+rm e.tmp
+exec sh -c 'lyceum amend ''why''; echo "exit=$?"'
+stdout '^exit=2$'
+cp $WORK/log.jsonl lyceum/events.jsonl
+
+# Only bypass lines: amend goes ahead and its commit carries them.
+exec sh -c 'cat $WORK/bypass.jsonl >> lyceum/events.jsonl'
+exec lyceum amend 'the plan changed'
+stdout '^Amended 6ae678-csv-export'
+exec git status --porcelain
+! stdout .
+exec git show HEAD:lyceum/events.jsonl
+stdout '"type":"bypass"'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# test: the run is gate evidence, and clears verify.
+exec sh -c 'cat $WORK/bypass2.jsonl >> lyceum/events.jsonl'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+exec git status --porcelain
+! stdout .
+
+# close goes ahead too.
+exec sh -c 'cat $WORK/bypass3.jsonl >> lyceum/events.jsonl'
+exec lyceum close
+grep '^status: closed$' lyceum/plan/6ae678-csv-export.md
+exec git status --porcelain
+! stdout .
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+echo ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+-- forged.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"approve","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"abc1234","gate":"cause"}
+-- bypass.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"","actor":"owner@example.com","commit":"abc1234","check":"no-unit","message":"m1"}
+-- bypass2.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"","actor":"owner@example.com","commit":"abc1234","check":"no-unit","message":"m2"}
+-- bypass3.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"","actor":"owner@example.com","commit":"abc1234","check":"no-unit","message":"m3"}

@@ -1,0 +1,93 @@
+# AC146: given a feat whose verify cleared at commit X, when a later commit changes a code file, then local check warns naming the file, check --ci fails, and close refuses until lyceum test passes at HEAD
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add feat 'CSV export'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'build'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# Only a doc or lyceum/ commit after verify: nothing is stale.
+cp $WORK/note.md note.md
+exec git add -A
+exec git commit -q -m 'a note'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A later code commit: local check names the file, with no bypass event.
+cp $WORK/app.sh app.sh
+exec git add -A
+exec git commit -q -m 'code after verify'
+exec lyceum check --pre-commit
+stdout 'stale-evidence: a commit after verify cleared at [0-9a-f]{7} changes code, so that run no longer describes HEAD: app\.sh$'
+stdout '^  to fix: run "lyceum test" so a passing run at HEAD clears verify again$'
+! stdout 'bypass'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# check --ci fails, and close refuses.
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'stale-evidence: .*app\.sh$'
+exec sh -c 'lyceum close; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'stale-evidence: .*app\.sh$'
+stderr '^Next: run "lyceum test" so a passing run at HEAD clears verify again$'
+
+# A failing run at HEAD does not settle it.
+cp $WORK/fail.sh t.sh
+exec git add -A
+exec git commit -q -m 'break the suite'
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout 'exit=[1-9]'
+exec sh -c 'lyceum close; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'stale-evidence'
+
+# A passing run at HEAD does: verify clears again and the unit closes.
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'fix the suite'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+grep -count=2 '"type":"gate-clear",.*"gate":"verify"' lyceum/events.jsonl
+exec lyceum check --ci
+! stdout 'stale-evidence'
+exec lyceum close
+stdout '^Closed 6ae678-csv-export$'
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+
+# TESTING.md
+-- t.sh --
+exit 0
+-- fail.sh --
+exit 1
+-- a_test.sh --
+exit 0
+-- app.sh --
+echo app
+-- note.md --
+A note.
+-- spec.txt --
+spec
+-- testing.txt --
+testing

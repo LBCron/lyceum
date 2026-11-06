@@ -1,0 +1,30 @@
+# Guard hook: with the pre-tool hook's denials off, the attacks of ac053_hook_blocks_code_before_gate.txtar and
+# ac054_hook_blocks_approve.txtar are allowed: a code write before the spec gate, and a shell call running lyceum approve.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+payload claude/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'

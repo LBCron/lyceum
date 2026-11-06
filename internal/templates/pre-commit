@@ -1,0 +1,4 @@
+# lyceum:start
+# Lyceum's check, written by "lyceum init": it warns, and the commit goes ahead.
+lyceum check --pre-commit || true
+# lyceum:end

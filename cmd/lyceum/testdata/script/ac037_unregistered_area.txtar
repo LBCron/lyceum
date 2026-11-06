@@ -1,0 +1,58 @@
+# AC37: given a plan naming an area not in the registry, when the plan gate is approved, then the approval is refused and the output lists existing areas and --new-area
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum plan --new-area orders
+exec lyceum refactor 'Split parser'
+cp $WORK/plan.md lyceum/plan/6ae678-split-parser.md
+exec git add -A
+exec git commit -q -m 'draft intent'
+
+# approve intent refuses: billing is not registered.
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve intent: the plan names area "billing", which is not in the area registry of lyceum/SPEC.md; the registered areas are orders$'
+stderr '^Next: register it: lyceum plan --new-area billing$'
+! grep '"type":"approve"' lyceum/events.jsonl
+
+# Registered, the approval goes through.
+exec lyceum plan --new-area billing
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep -count=1 '"type":"approve","unit":"6ae678-split-parser",.*"gate":"intent"' lyceum/events.jsonl
+
+# approve spec refuses the same way for a feat. billing was registered on the refactor branch, not on main.
+exec git switch -q main
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/3f4fbd-csv-export.md lyceum/plan/3f4fbd-csv-export.md 'approvals: []' 'areas: [payments]\napprovals: []'
+grep '^areas: \[payments\]$' lyceum/plan/3f4fbd-csv-export.md
+exec git add -A
+exec git commit -q -m 'draft spec'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: the plan names area "payments", which is not in the area registry of lyceum/SPEC.md; the registered areas are orders$'
+stderr '^Next: register it: lyceum plan --new-area payments$'
+
+-- plan.md --
+---
+id: 6ae678-split-parser
+type: refactor
+title: Split parser
+branch: refactor/6ae678-split-parser
+status: planned
+gate: intent
+areas: [orders, billing]
+approvals: []
+---
+
+## What and why
+
+Split the parser into a lexer and a parser.
+-- intent.txt --
+intent
+-- spec.txt --
+spec

@@ -1,0 +1,22 @@
+# AC163: given a build whose CI Action is unpublished, when init runs with defaults, then no CI workflow is offered or written and the output says CI arrives with the published Action
+env LYCEUM_ACTION_PUBLISHED=0
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+! stderr 'CI workflow'
+stdout 'No CI workflow: CI arrives with the published Action'
+! exists .github/workflows/lyceum.yml
+exists .git/hooks/pre-commit
+
+# A workflow already there is left as it is, and doctor flags it.
+mkdir .github .github/workflows
+cp $TEMPLATES/workflow.yml .github/workflows/lyceum.yml
+stdin $WORK/defaults.txt
+exec lyceum init
+cmp .github/workflows/lyceum.yml $TEMPLATES/workflow.yml
+exec lyceum doctor
+stdout '^ci: '
+
+-- defaults.txt --
+
+

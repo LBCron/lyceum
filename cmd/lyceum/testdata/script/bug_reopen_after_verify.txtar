@@ -1,0 +1,141 @@
+# A code commit on a bug after verify clears sends it back to fix: the next approve, test, status or
+# check writes one gate-reopen event with the reason and moves the plan's gate to fix and its status
+# to in-progress; verify must clear again before approve cause. check --ci fails on such a commit
+# and writes nothing. A commit touching only tests or lyceum/ reopens nothing. The AC17 replay applies the
+# reopen, so check has no finding.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+stdout '^Gate: cause$'
+
+# A commit touching only lyceum/ after verify reopens nothing.
+exec sh -c 'printf "\n## Root cause\n\nlogin_plus returned the wrong value.\n" >> lyceum/plan/6ae678-login-plus.md'
+exec git commit -q -am 'root cause'
+exec lyceum status
+! stdout '^Back to fix'
+stdout '^Gate: cause$'
+! grep gate-reopen lyceum/events.jsonl
+
+# A code commit after verify: before any local command, check --ci fails naming the files and writes nothing.
+cp $WORK/login-fixed2.sh src/login.sh
+exec git commit -q -am 'tweak the fix'
+cp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: reopen: a commit after verify cleared at [0-9a-f]{7,} changes files that are not tests: src/login.sh; verify must clear again before approve cause$'
+stderr '^Next: run "lyceum test" locally so verify clears again$'
+cmp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+grep '^gate: cause$' lyceum/plan/6ae678-login-plus.md
+exec git status --porcelain
+! stdout .
+
+# approve cause sends the bug back to fix, records why, and refuses.
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=2$'
+stderr '^Can''t approve cause: unit 6ae678-login-plus went back to fix: a commit after verify cleared at [0-9a-f]{7,} changes files that are not tests: src/login.sh$'
+stderr '^Next: run "lyceum test" so verify clears again, then run "lyceum approve cause" yourself in a terminal$'
+! stderr 'Type the gate name'
+grep '^gate: fix$' lyceum/plan/6ae678-login-plus.md
+grep '^status: in-progress$' lyceum/plan/6ae678-login-plus.md
+grep -count=1 '"type":"gate-reopen"' lyceum/events.jsonl
+grep '"type":"gate-reopen","unit":"6ae678-login-plus",.*"commit":"[0-9a-f]{7,}","gate":"fix","reason":"a commit after verify cleared at [0-9a-f]{7,} changes files that are not tests: src/login.sh","status":"in-progress"\}$' lyceum/events.jsonl
+! grep '"gate":"cause"' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: reopen fix 6ae678-login-plus$'
+exec git status --porcelain
+! stdout .
+
+# At fix, approve cause is the ordinary refusal: fix is a work step; nothing is reopened twice.
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=2$'
+stderr '^Can''t approve cause: unit 6ae678-login-plus is at gate fix; fix is a work step and clears when its work is done, not by an approval$'
+grep -count=1 '"type":"gate-reopen"' lyceum/events.jsonl
+
+# The log replays the reopen: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+# lyceum test clears verify again; then approve cause works.
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+stdout '^Gate: cause$'
+grep '^status: implemented$' lyceum/plan/6ae678-login-plus.md
+grep -count=2 '"type":"gate-clear","unit":"6ae678-login-plus",.*"gate":"verify"' lyceum/events.jsonl
+
+# status, lyceum test and a local check notice a code commit after verify the same way.
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'back to the first fix'
+exec lyceum status
+stdout '^Back to fix for 6ae678-login-plus: a commit after verify cleared at [0-9a-f]{7,} changes files that are not tests: src/login.sh; verify must clear again before approve cause$'
+stdout '^Gate: fix$'
+grep -count=2 '"type":"gate-reopen"' lyceum/events.jsonl
+exec lyceum test
+! stdout '^Back to fix'
+stdout '^Cleared verify for 6ae678-login-plus$'
+cp $WORK/login-fixed2.sh src/login.sh
+exec git commit -q -am 'tweak again'
+exec lyceum test
+stdout '^Back to fix for 6ae678-login-plus: '
+stdout '^Cleared verify for 6ae678-login-plus$'
+stdout '^Gate: cause$'
+grep -count=3 '"type":"gate-reopen"' lyceum/events.jsonl
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'and back'
+exec lyceum check
+stdout '^Back to fix for 6ae678-login-plus: '
+! stdout '^fail:'
+stdout '^Gate: fix$'
+grep -count=4 '"type":"gate-reopen"' lyceum/events.jsonl
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=0$'
+grep 'Approved cause for 6ae678-login-plus' $WORK/tty.out
+grep '^gate: close$' lyceum/plan/6ae678-login-plus.md
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login-fixed2.sh --
+login_plus() { r=ok; echo "$r"; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

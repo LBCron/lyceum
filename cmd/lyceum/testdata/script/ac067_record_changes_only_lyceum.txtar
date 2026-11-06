@@ -1,0 +1,64 @@
+# AC67: given understand, trace or audit, when it completes, then git diff shows changes only under lyceum/; here, record, which saves and commits every inspect record
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+mkdir src lyceum/understand lyceum/trace lyceum/audit
+cp $WORK/main.go src/main.go
+cp $WORK/go.mod go.mod
+exec git add src go.mod
+exec git commit -q -m 'code'
+exec git rev-parse HEAD
+cp stdout $WORK/base.txt
+
+# One record of each kind, each citing code.
+cp $WORK/understand.md lyceum/understand/overview.md
+cp $WORK/trace.md lyceum/trace/startup.md
+cp $WORK/audit.md lyceum/audit/deps.md
+exec lyceum record lyceum/understand/overview.md
+exec lyceum record lyceum/trace/startup.md
+exec lyceum record lyceum/audit/deps.md
+
+# Everything they changed, committed or not, is under lyceum/; the cited code is untouched.
+exec git status --porcelain
+! stdout .
+exec sh -c 'git diff --name-only "$(cat $WORK/base.txt)" HEAD'
+cmp stdout $WORK/want-diff.txt
+exec sh -c 'git diff --quiet "$(cat $WORK/base.txt)" HEAD -- src go.mod'
+cmp src/main.go $WORK/main.go
+cmp go.mod $WORK/go.mod
+
+-- main.go --
+package main
+
+func main() {}
+-- go.mod --
+module example.com/app
+
+go 1.22
+-- understand.md --
+---
+kind: understand
+title: Overview
+cites:
+  - path: src/
+---
+-- trace.md --
+---
+kind: trace
+title: Startup
+cites:
+  - path: src/main.go
+    symbol: main()
+---
+-- audit.md --
+---
+kind: audit
+title: Dependencies
+cites:
+  - path: go.mod
+---
+-- want-diff.txt --
+lyceum/audit/e91b6e-dependencies.md
+lyceum/trace/3f4fbd-startup.md
+lyceum/understand/6ae678-overview.md

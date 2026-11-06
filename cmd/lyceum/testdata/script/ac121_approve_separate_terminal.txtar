@@ -1,0 +1,43 @@
+# AC121: given lyceum approve spec run with a harness env variable set or without a TTY, then the refusal says to run it in a separate terminal and names the in-agent shell as not working
+# The separate-terminal step comes after the existing next step, so ac039 and ac040 still hold.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# A harness env variable set, with a TTY: as Claude Code's "!" prefix runs it.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'CLAUDECODE=1 lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve spec: this is running inside an agent harness \(CLAUDECODE is set\); approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in your own terminal, outside the agent$'
+stderr '^Next: use a separate terminal that the agent doesn''t control; the in-agent shell, such as Claude Code''s "!" prefix, runs inside the agent and doesn''t work$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# Every harness variable gets the same step.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'PI_CODING_AGENT=1 lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Next: use a separate terminal that the agent doesn''t control; the in-agent shell, such as Claude Code''s "!" prefix, runs inside the agent and doesn''t work$'
+
+# No TTY.
+! exec lyceum approve spec
+stderr '^Can''t approve spec: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in a terminal$'
+stderr '^Next: use a separate terminal that the agent doesn''t control; the in-agent shell, such as Claude Code''s "!" prefix, runs inside the agent and doesn''t work$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# With --json, the step is in the refusal's next list.
+! exec lyceum approve spec --json
+jsonobject
+stdout '"next":\["run \\"lyceum approve spec\\" yourself in a terminal","use a separate terminal that the agent doesn''t control; the in-agent shell, such as Claude Code''s \\"!\\" prefix, runs inside the agent and doesn''t work"\]'
+
+# Bare approve gets it too.
+! exec lyceum approve
+stderr '^Next: use a separate terminal that the agent doesn''t control; the in-agent shell, such as Claude Code''s "!" prefix, runs inside the agent and doesn''t work$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+-- spec.txt --
+spec

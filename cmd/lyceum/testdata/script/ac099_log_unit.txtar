@@ -1,0 +1,47 @@
+# AC99: given log --unit a3f9c2-csv-export, then only that unit's events and the commits on its branch are shown
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'set up'
+
+# Two units, each with a commit on its branch, and a commit on main after both branched.
+env LYCEUM_NOW=2026-03-02T09:00:00Z GIT_COMMITTER_DATE=2026-03-02T09:00:00Z
+exec lyceum add feat 'CSV export'
+env GIT_COMMITTER_DATE=2026-03-02T10:00:00Z
+exec git commit -q --allow-empty -m 'write the exporter'
+exec git switch -q main
+env LYCEUM_NOW=2026-03-02T11:00:00Z GIT_COMMITTER_DATE=2026-03-02T11:00:00Z
+exec lyceum add doc 'Guide'
+env GIT_COMMITTER_DATE=2026-03-02T12:00:00Z
+exec git commit -q --allow-empty -m 'write the guide'
+exec git switch -q main
+env GIT_COMMITTER_DATE=2026-03-02T13:00:00Z
+exec git commit -q --allow-empty -m 'main work'
+
+# The guide's add event reaches the CSV branch's log as a union merge would bring it.
+exec git switch -q feat/6ae678-csv-export
+exec sh -c 'git show docs/3f4fbd-guide:lyceum/events.jsonl | tail -n 1 >> lyceum/events.jsonl'
+
+# Bare log shows everything; each branch's own commits are its unit's.
+exec lyceum log
+stdout '^2026-03-02T11:00:00Z +add +3f4fbd-guide '
+stdout '^2026-03-02T12:00:00Z +commit +3f4fbd-guide +[0-9a-f]{7} write the guide$'
+stdout '^2026-03-02T13:00:00Z +commit +- +[0-9a-f]{7} main work$'
+
+# --unit: only its events and the commits on its branch and not on main.
+exec lyceum log --unit 6ae678-csv-export
+stdout '\A2026-03-02T09:00:00Z  add     6ae678-csv-export  branch=feat/6ae678-csv-export gate=spec status=planned unit_type=feat\n2026-03-02T10:00:00Z  commit  6ae678-csv-export  [0-9a-f]{7} write the exporter\nNext: run "lyceum status"\n\z'
+! stderr .
+
+# The other unit, from the same checkout.
+exec lyceum log --unit 3f4fbd-guide
+stdout -count=2 '^2026-'
+stdout '^2026-03-02T11:00:00Z +add +3f4fbd-guide '
+stdout '^2026-03-02T12:00:00Z +commit +3f4fbd-guide +[0-9a-f]{7} write the guide$'
+
+# A unit the event log doesn't know is a refusal.
+! exec lyceum log --unit 000000-nope
+stderr '^Can''t show the log: no unit 000000-nope is in lyceum/events.jsonl$'
+stderr '^Next: run "lyceum status --all" to see the units$'
+! stdout .
+

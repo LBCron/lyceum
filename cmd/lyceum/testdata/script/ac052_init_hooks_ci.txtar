@@ -1,0 +1,96 @@
+# AC52: given init and the user accepts defaults, then a pre-commit hook calling lyceum check and a CI workflow calling lyceum check --ci are installed
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+stderr 'Install a pre-commit hook that runs lyceum check\? \[Y/n\] '
+stderr 'Install a CI workflow that runs lyceum check --ci on pull requests\? \[Y/n\] '
+stdout '^Created \.git/hooks/pre-commit$'
+stdout '^Created \.github/workflows/lyceum\.yml$'
+! stdout 'Skipped'
+cmp .git/hooks/pre-commit $WORK/pre-commit
+exec sh -c 'test -x .git/hooks/pre-commit'
+cmp .github/workflows/lyceum.yml $TEMPLATES/workflow.yml
+grep '^on:\n  pull_request:$' .github/workflows/lyceum.yml
+grep '^      - uses: oritromax/lyceum/check-action@v1$' .github/workflows/lyceum.yml
+
+# The hook runs lyceum check on commit, and the commit goes ahead.
+exec git add -A
+exec git commit -q -m 'lyceum init'
+stderr '^Next: '
+exec git log --oneline
+stdout 'lyceum init'
+
+# A second init leaves both as they are, without asking.
+exec lyceum init
+! stderr .
+! stdout 'Created|Updated'
+
+# Declined, neither is installed, and init says how to add them later.
+exec git init -q -b main $WORK/no
+exec git -C $WORK/no config user.email owner@example.com
+cd $WORK/no
+stdin $WORK/no.txt
+exec lyceum init
+stdout '^Skipped the pre-commit hook; run "lyceum init" again to add it$'
+stdout '^Skipped the CI workflow; run "lyceum init" again to add it$'
+! exists .git/hooks/pre-commit
+! exists .github
+
+# A pre-commit hook of the user's own is never overwritten: init shows its block and asks, default no.
+exec git init -q -b main $WORK/own
+exec git -C $WORK/own config user.email owner@example.com
+cd $WORK/own
+cp $WORK/foreign .git/hooks/pre-commit
+stdin $WORK/defaults.txt
+exec lyceum init
+stderr '^# lyceum:start$'
+stderr 'Append this Lyceum check to your \.git/hooks/pre-commit\? \[y/N\] '
+stdout '^Skipped the pre-commit hook; run "lyceum init" again to add it$'
+stdout '^Created \.github/workflows/lyceum\.yml$'
+cmp .git/hooks/pre-commit $WORK/foreign
+
+# Accepted, the block is appended after the user's hook, which is kept byte for byte.
+stdin $WORK/yes.txt
+exec lyceum init
+stdout '^Updated \.git/hooks/pre-commit$'
+cmp .git/hooks/pre-commit $WORK/appended
+
+# Lyceum's block is found by its markers and replaced in place on the next run, without asking.
+cp $WORK/appended-old .git/hooks/pre-commit
+exec lyceum init
+! stderr .
+stdout '^Updated \.git/hooks/pre-commit$'
+cmp .git/hooks/pre-commit $WORK/appended
+
+-- defaults.txt --
+
+
+-- no.txt --
+n
+n
+-- yes.txt --
+y
+-- pre-commit --
+#!/bin/sh
+# lyceum:start
+# Lyceum's check, written by "lyceum init": it warns, and the commit goes ahead.
+lyceum check --pre-commit || true
+# lyceum:end
+-- foreign --
+#!/bin/sh
+make lint
+-- appended --
+#!/bin/sh
+make lint
+
+# lyceum:start
+# Lyceum's check, written by "lyceum init": it warns, and the commit goes ahead.
+lyceum check --pre-commit || true
+# lyceum:end
+-- appended-old --
+#!/bin/sh
+make lint
+
+# lyceum:start
+lyceum check --old
+# lyceum:end

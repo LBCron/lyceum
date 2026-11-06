@@ -1,0 +1,75 @@
+# AC26: given a refactor step, when the agent runs lyceum test changed, then a run is recorded and no gate clears
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum refactor 'Tidy'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum test
+stdout '^Cleared baseline for 6ae678-tidy$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+cp $WORK/calc-tidy.sh src/calc.sh
+exec git commit -q -am 'tidy add'
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+cp stdout $WORK/clears.txt
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+cp stdout $WORK/runs.txt
+
+exec lyceum test changed
+stdout '^Passed: '
+stdout '^Gate: build$'
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+cmp stdout $WORK/clears.txt
+exec sh -c 'test $(ls .lyceum/runs/*.json | wc -l) -eq $(($(cat $WORK/runs.txt) + 1)) && echo one-more'
+stdout '^one-more$'
+exec sh -c 'grep -l "\"subset\":\"changed\"" .lyceum/runs/*.json | wc -l'
+stdout '^ *1$'
+exec git status --porcelain
+! stdout .
+
+# The full suite is what clears verify, on the same commit.
+exec lyceum test
+stdout '^Cleared verify for 6ae678-tidy$'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-tidy.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  changed: sh ./t.sh
+---
+
+# TESTING.md

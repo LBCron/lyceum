@@ -1,0 +1,221 @@
+# AC181: given a pull request in a repo whose workflow uses check-action@v1, then the action installs the released binary for the runner, verifies its checksum, and fails the job exactly when lyceum check --ci exits non-zero
+# check-action/run.sh runs against a fake release served from disk: file:// downloads
+# and a local tag repo stand in for github.com. Stub archives print which archive ran;
+# v3.0.0 carries the real release build.
+exec bash $WORK/mkrelease.sh $WORK/rel $WORK/tags $WORK/pretags
+env LYCEUM_ACTION_BASE_URL=file://$WORK/rel
+env LYCEUM_ACTION_GIT_URL=$WORK/tags
+env LYCEUM_ACTION_REPOSITORY=oritromax/lyceum
+env GITHUB_WORKSPACE=$REPO
+env GITHUB_ACTION_PATH=$CHECK_ACTION
+mkdir $WORK/tmp
+env RUNNER_TEMP=$WORK/tmp
+env LYCEUM_VERSION=
+
+# The archive for each supported runner, from the release v1 points at (v1.1.0,
+# not the newer prerelease or v2.0.0), run as `check --ci` in the workspace.
+env LYCEUM_ACTION_REF=v1
+env RUNNER_OS=Linux
+env RUNNER_ARCH=X64
+exec bash $CHECK_ACTION/run.sh
+stdout '^lyceum check-action: v1\.1\.0 \(lyceum_1\.1\.0_linux_amd64\.tar\.gz\)$'
+stdout '^stub 1\.1\.0 linux_amd64: check --ci$'
+exec bash $WORK/workspace.sh
+env RUNNER_ARCH=ARM64
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.1\.0 linux_arm64: check --ci$'
+env RUNNER_OS=macOS
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.1\.0 darwin_arm64: check --ci$'
+env RUNNER_ARCH=X64
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.1\.0 darwin_amd64: check --ci$'
+
+# Version resolution: an exact tag, a prerelease tag, a non-version ref (the highest
+# major tag), the ref read from the action's checkout path, and the version input.
+env RUNNER_OS=Linux
+env LYCEUM_ACTION_REF=v1.0.0
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_ACTION_REF=v1.2.0-rc.1
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.2\.0-rc\.1 linux_amd64: check --ci$'
+env LYCEUM_ACTION_REF=main
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 2\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_ACTION_REF=
+env GITHUB_ACTION_PATH=/home/runner/work/_actions/oritromax/lyceum/v1/check-action
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.1\.0 linux_amd64: check --ci$'
+env GITHUB_ACTION_PATH=$CHECK_ACTION
+env LYCEUM_ACTION_REF=v1
+env LYCEUM_VERSION=1.0.0
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_VERSION=latest
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 2\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_VERSION=v2
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 2\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_VERSION=v7
+! exec bash $CHECK_ACTION/run.sh
+stderr 'no tag v7 in'
+env LYCEUM_VERSION=
+
+# While the repo has no vN tag at all, the default, latest and any vN fall back to
+# the newest release by semver precedence, prereleases included.
+env LYCEUM_ACTION_GIT_URL=$WORK/pretags
+env LYCEUM_ACTION_REF=main
+exec bash $CHECK_ACTION/run.sh
+stdout '^lyceum check-action: v1\.0\.0-rc\.2 \(lyceum_1\.0\.0-rc\.2_linux_amd64\.tar\.gz\)$'
+stdout '^stub 1\.0\.0-rc\.2 linux_amd64: check --ci$'
+env LYCEUM_ACTION_REF=v1
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0-rc\.2 linux_amd64: check --ci$'
+env LYCEUM_VERSION=latest
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0-rc\.2 linux_amd64: check --ci$'
+env LYCEUM_VERSION=v2
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0-rc\.2 linux_amd64: check --ci$'
+env LYCEUM_VERSION=
+# rc.10 beats rc.9 numerically; a stable release beats every rc of its version;
+# an rc of a higher version beats both.
+exec git -C $WORK/pretags tag v1.0.0-rc.9
+exec git -C $WORK/pretags tag v1.0.0-rc.10
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0-rc\.10 linux_amd64: check --ci$'
+exec git -C $WORK/pretags tag v1.0.0
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+exec git -C $WORK/pretags tag v1.1.0-rc.1
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.1\.0-rc\.1 linux_amd64: check --ci$'
+# Once a vN tag exists the fallback is never used: v1 runs its stable release, and
+# a missing major fails.
+exec git -C $WORK/pretags tag v1
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_ACTION_REF=main
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+env LYCEUM_VERSION=v2
+! exec bash $CHECK_ACTION/run.sh
+stderr 'no tag v2 in'
+! stdout stub
+env LYCEUM_VERSION=
+env LYCEUM_ACTION_REF=v1
+env LYCEUM_ACTION_GIT_URL=$WORK/tags
+
+# The job's status is check's: 0 passes, any other code comes back unchanged.
+env STUB_EXIT=0
+exec bash $WORK/status.sh $WORK/code bash $CHECK_ACTION/run.sh
+grep '^exit 0$' $WORK/code
+env STUB_EXIT=7
+exec bash $WORK/status.sh $WORK/code bash $CHECK_ACTION/run.sh
+grep '^exit 7$' $WORK/code
+stdout '^stub 1\.1\.0 linux_amd64: check --ci$'
+env STUB_EXIT=
+
+# Unsupported runners fail before any download, naming the platform.
+env RUNNER_OS=Windows
+! exec bash $CHECK_ACTION/run.sh
+stderr '^lyceum check-action: unsupported runner OS ''Windows'': Lyceum releases are built for Linux and macOS \(X64, ARM64\)$'
+! stdout .
+env RUNNER_OS=Linux
+env RUNNER_ARCH=ARM
+! exec bash $CHECK_ACTION/run.sh
+stderr '^lyceum check-action: unsupported runner architecture ''ARM'''
+! stdout .
+env RUNNER_ARCH=X64
+
+# A tampered archive, or one checksums.txt does not list, is never run.
+env LYCEUM_ACTION_REF=v0.9.0
+! exec bash $CHECK_ACTION/run.sh
+stderr '^lyceum check-action: checksum mismatch for lyceum_0\.9\.0_linux_amd64\.tar\.gz: expected 0{64}, got [0-9a-f]{64}$'
+! stdout stub
+env RUNNER_OS=macOS
+env RUNNER_ARCH=ARM64
+! exec bash $CHECK_ACTION/run.sh
+stderr '^lyceum check-action: checksums.txt of v0\.9\.0 has no entry for lyceum_0\.9\.0_darwin_arm64\.tar\.gz$'
+! stdout stub
+env RUNNER_OS=Linux
+env RUNNER_ARCH=X64
+
+# The real release build: check --ci fails in a repo Lyceum is not set up in, and
+# the action exits with the same code; after init it passes and the action exits 0.
+env LYCEUM_ACTION_REF=v3.0.0
+exec bash $WORK/status.sh $WORK/direct lyceum-published check --ci
+exec bash $WORK/status.sh $WORK/action bash $CHECK_ACTION/run.sh
+! grep '^exit 0$' $WORK/action
+cmp $WORK/action $WORK/direct
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec bash $CHECK_ACTION/run.sh
+stdout '^No findings$'
+
+-- status.sh --
+# status.sh <file> <command...>: run the command and write its exit status to file.
+out=$1
+shift
+"$@"
+echo "exit $?" >"$out"
+-- workspace.sh --
+# The stub records the directory it ran in; it must be the workspace.
+test "$(cat "$RUNNER_TEMP"/*/cwd | sort -u)" = "$GITHUB_WORKSPACE"
+-- mkrelease.sh --
+# mkrelease.sh <release-dir> <tag-repo> <pre-tag-repo>: a fake GitHub release tree,
+# <tag>/<file>, a repo holding the tags check-action resolves versions from, and one
+# with no major tag, holding only v1.0.0-rc.1 and v1.0.0-rc.2.
+set -eu
+rel=$1
+tags=$2
+pretags=$3
+sum() {
+	if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | awk '{ print $1 }'
+}
+# release <tag> <binary|-> [bad]: four archives and checksums.txt; with "-" each
+# archive holds a stub naming itself; "bad" lists a wrong sum for linux_amd64 and
+# none for darwin_arm64.
+release() {
+	tag=$1 bin=$2 mode=${3:-}
+	v=${tag#v}
+	mkdir -p "$rel/$tag"
+	: >"$rel/$tag/checksums.txt"
+	for p in linux_amd64 linux_arm64 darwin_amd64 darwin_arm64; do
+		d=$(mktemp -d)
+		if [ "$bin" = - ]; then
+			printf '#!/bin/sh\npwd >"$(dirname "$0")/cwd"\necho "stub %s %s: $*"\nexit "${STUB_EXIT:-0}"\n' "$v" "$p" >"$d/lyceum"
+			chmod +x "$d/lyceum"
+		else
+			cp "$bin" "$d/lyceum"
+		fi
+		a="lyceum_${v}_${p}.tar.gz"
+		tar -czf "$rel/$tag/$a" -C "$d" lyceum
+		case "$mode:$p" in
+		bad:linux_amd64) echo "$(printf '0%.0s' $(seq 64))  $a" >>"$rel/$tag/checksums.txt" ;;
+		bad:darwin_arm64) ;;
+		*) echo "$(sum "$rel/$tag/$a")  $a" >>"$rel/$tag/checksums.txt" ;;
+		esac
+	done
+}
+release v0.9.0 - bad
+for t in v1.0.0 v1.1.0 v1.2.0-rc.1 v2.0.0 v1.0.0-rc.1 v1.0.0-rc.2 v1.0.0-rc.9 v1.0.0-rc.10 v1.1.0-rc.1; do
+	release "$t" -
+done
+release v3.0.0 "$(command -v lyceum-published)"
+
+git init -q "$tags"
+cd "$tags"
+c() { git -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$1"; }
+c one && git tag v0.9.0 && git tag v1.0.0
+c two && git -c user.name=t -c user.email=t@t tag -a -m v1.1.0 v1.1.0 && git tag v1
+c three && git tag v1.2.0-rc.1
+c four && git -c user.name=t -c user.email=t@t tag -a -m v2.0.0 v2.0.0 && git tag v2 && git tag v3.0.0
+
+git init -q "$pretags"
+cd "$pretags"
+c one && git tag v1.0.0-rc.2 && git tag v1.0.0-rc.1

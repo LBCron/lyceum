@@ -1,0 +1,99 @@
+# AC92: given init run a second time, then no file under lyceum/ changes; it updates the skills, shims and hook entries it installed, without asking
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init --harness claude --harness pi
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# The owner's lyceum/ content, and an older install: a skill, the Pi shim and Claude Code's hook entry differ from
+# this version's, and the settings file has gained a key of the user's.
+cp $WORK/spec.md lyceum/SPEC.md
+mkdir lyceum/spec
+cp $WORK/area.md lyceum/spec/export.md
+exec sh -c 'printf "\n# owner note\n" >> lyceum/config.yaml'
+cp $WORK/old-skill.md .claude/skills/lyceum-feat/SKILL.md
+cp $WORK/old-skill.md .agents/skills/lyceum-status/SKILL.md
+cp $WORK/old-shim.ts .pi/extensions/lyceum.ts
+cp $WORK/old-settings.json .claude/settings.json
+exec git add -A
+exec git commit -q -m 'owner content and an older install'
+exec git status --porcelain
+! stdout .
+
+# Claude Code and Pi are wired already, so init updates them without asking.
+exec lyceum init
+! stderr .
+stdout '^Updated \.claude/skills/lyceum-feat/SKILL\.md$'
+stdout '^Updated \.agents/skills/lyceum-status/SKILL\.md$'
+stdout '^Updated \.pi/extensions/lyceum\.ts$'
+stdout '^Updated \.claude/settings\.json$'
+stdout '^Wired Claude Code$'
+stdout '^Wired Pi$'
+cmp .claude/skills/lyceum-feat/SKILL.md $TEMPLATES/skills/feat/SKILL.md
+cmp .agents/skills/lyceum-status/SKILL.md $TEMPLATES/skills/status/SKILL.md
+cmp .pi/extensions/lyceum.ts $TEMPLATES/pi-extension.ts
+cmp .claude/settings.json $WORK/new-settings.json
+
+# Nothing under lyceum/ changed.
+exec git status --porcelain -- lyceum
+! stdout .
+exec git status --porcelain
+stdout '^ M \.agents/skills/lyceum-status/SKILL\.md$'
+! stdout ' lyceum/'
+
+-- defaults.txt --
+
+
+-- spec.md --
+# My spec
+
+## Area registry
+
+| Area | File |
+|---|---|
+| export | lyceum/spec/export.md |
+-- area.md --
+# Export
+
+The owner's words.
+-- old-skill.md --
+---
+name: lyceum-feat
+description: An older version.
+---
+-- old-shim.ts --
+// an older shim
+-- old-settings.json --
+{
+  "model": "mine",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "lyceum hook pre-tool --harness claude"
+          }
+        ]
+      }
+    ]
+  }
+}
+-- new-settings.json --
+{
+  "model": "mine",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "lyceum hook pre-tool --harness claude"
+          }
+        ]
+      }
+    ]
+  }
+}

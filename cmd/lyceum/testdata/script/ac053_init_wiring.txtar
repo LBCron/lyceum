@@ -1,0 +1,126 @@
+# AC53: given each wired harness's hook installed by init and a unit at spec, not approved, when the agent writes src/x.ts, then the write is blocked with a message naming the gate
+# The JSON harnesses' settings files run their command, as the harness would, on the captured fixture. The Pi and
+# OpenCode shims are the embedded copies; they pipe the event to the same command (ac053_hook_blocks_code_before_gate).
+cd $REPO
+mkdir .claude
+cp $WORK/user-settings.json .claude/settings.json
+exec lyceum init --harness claude --harness codex --harness commandcode --harness opencode --harness pi
+stdout '^Updated \.claude/settings\.json$'
+stdout '^Created \.codex/hooks\.json$'
+stdout '^Created \.commandcode/settings\.json$'
+stdout '^Created \.opencode/plugins/lyceum\.js$'
+stdout '^Created \.pi/extensions/lyceum\.ts$'
+stdout '^Wired Codex\n  Codex runs project hooks only once you trust them; trust this project in Codex, or the hook silently won''t run$'
+stdout '^Wired Pi\n  Pi loads project extensions only in a trusted project; trust this project in Pi, or the hook won''t load$'
+! stdout 'Wired (Claude Code|Command Code|OpenCode)\n  '
+
+# The user's own settings, hook included, are kept, and Lyceum's entry is added after it.
+cmp .claude/settings.json $WORK/merged-settings.json
+cmp .codex/hooks.json $WORK/codex-hooks.json
+grep '"matcher": "shell\|write\|edit"' .commandcode/settings.json
+grep '"command": "lyceum hook pre-tool --harness commandcode"' .commandcode/settings.json
+cmp .opencode/plugins/lyceum.js $TEMPLATES/opencode-plugin.js
+cmp .pi/extensions/lyceum.ts $TEMPLATES/pi-extension.ts
+grep 'spawnSync\("lyceum", \["hook", "pre-tool", "--harness", "opencode"\]' .opencode/plugins/lyceum.js
+grep 'cwd: ctx\.location\.directory' .opencode/plugins/lyceum.js
+grep 'spawnSync\("lyceum", \["hook", "pre-tool", "--harness", "pi"\]' .pi/extensions/lyceum.ts
+
+# Re-running init gives the same bytes.
+exec lyceum init --harness claude --harness codex --harness commandcode --harness opencode --harness pi
+! stdout 'Created|Updated'
+cmp .claude/settings.json $WORK/merged-settings.json
+cmp .codex/hooks.json $WORK/codex-hooks.json
+
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# Each settings file's command denies the write.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+hookrun .claude/settings.json
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. '
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+hookrun .codex/hooks.json
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. '
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+hookrun .commandcode/settings.json
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. '
+
+# And allows a write under lyceum/.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/lyceum/spec/csv.md
+stdin $WORK/p.json
+hookrun .claude/settings.json
+! stdout .
+
+# A settings file that isn't valid JSON is never overwritten: init refuses.
+exec git init -q -b main $WORK/bad
+exec git -C $WORK/bad config user.email owner@example.com
+mkdir $WORK/bad/.codex
+cp $WORK/broken.json $WORK/bad/.codex/hooks.json
+cd $WORK/bad
+! exec lyceum init --harness codex
+stderr '^Can''t wire Codex: \.codex/hooks\.json is not valid settings JSON: '
+stderr '^Next: fix \.codex/hooks\.json, or move it aside, then run "lyceum init" again$'
+cmp .codex/hooks.json $WORK/broken.json
+
+-- broken.json --
+{"hooks":
+-- user-settings.json --
+{
+  "permissions": {"allow": ["Bash(make && make test)"]},
+  "hooks": {
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "./audit.sh"}]}
+    ]
+  }
+}
+-- merged-settings.json --
+{
+  "permissions": {
+    "allow": [
+      "Bash(make && make test)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./audit.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "lyceum hook pre-tool --harness claude"
+          }
+        ]
+      }
+    ]
+  }
+}
+-- codex-hooks.json --
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|apply_patch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "lyceum hook pre-tool --harness codex"
+          }
+        ]
+      }
+    ]
+  }
+}

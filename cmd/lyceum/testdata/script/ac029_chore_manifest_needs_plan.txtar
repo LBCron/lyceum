@@ -1,0 +1,53 @@
+# AC29: given a chore branch whose diff touches package.json, when check --ci runs and no approved plan exists, then it fails
+# The chore's plan and add event are written by hand, as "lyceum chore" would write them.
+# Manifests, lockfiles and CI config are code.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c chore/6ae678-deps
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/6ae678-deps.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'chore: deps'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# An uncommitted package.json is in the diff.
+cp $WORK/package.json package.json
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: chore: the chore changes code, a manifest, a lockfile or CI config without an approved plan: package.json$'
+stderr '^Next: move the chore to its planned tier with "lyceum plan" and have the owner approve the plan, or take those changes off this branch$'
+
+# Committed with its lockfile: both are named. A trivial chore has no scope check, which
+# the chore check covers: the chore failure is the only finding.
+cp $WORK/package.json package-lock.json
+exec git add -A
+exec git commit -q -m 'bump deps'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"findings":\[\{"check":"chore","severity":"fail","message":"the chore changes code, a manifest, a lockfile or CI config without an approved plan: package-lock.json, package.json","unit":"6ae678-deps",[^]]*\}\]\}$'
+! stdout '"check":"scope"'
+stdout '^exit=2$'
+exec lyceum check
+stdout '^fail: chore: '
+! stdout 'scope'
+
+-- plan.md --
+---
+id: 6ae678-deps
+type: chore
+title: Deps
+branch: chore/6ae678-deps
+status: in-progress
+gate: build
+approvals: []
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"6ae678-deps","actor":"owner@example.com","commit":"0000000","branch":"chore/6ae678-deps","gate":"build","status":"in-progress","unit_type":"chore"}
+-- package.json --
+{}

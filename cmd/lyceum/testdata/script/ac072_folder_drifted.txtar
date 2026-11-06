@@ -1,0 +1,44 @@
+# AC72: given a cited folder, when a new file is added in it, then the state is drifted
+cd $REPO
+exec lyceum init
+mkdir src lyceum/understand
+cp $WORK/a.ts src/a.ts
+cp $WORK/b.ts src/b.ts
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+cp $WORK/record.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+stdout '^Recorded lyceum/understand/6ae678-payments.md$'
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+# An ignored file is not part of the folder.
+exec sh -c 'echo "*.log" >> .gitignore'
+exec git add .gitignore
+exec git commit -q -m 'ignore logs'
+mkdir src/sub
+cp $WORK/b.ts src/sub/debug.log
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+# A new file, untracked or committed, drifts the folder.
+cp $WORK/b.ts src/sub/c.ts
+exec lyceum status
+stdout '^  drifted lyceum/understand/6ae678-payments.md: changed src/$'
+exec git add src
+exec git commit -q -m 'c'
+exec lyceum status
+stdout '^Records: 0 fresh, 1 drifted, 0 broken$'
+stdout '^  drifted lyceum/understand/6ae678-payments.md: changed src/$'
+
+-- a.ts --
+export const a = 1
+-- b.ts --
+export const b = 2
+-- record.md --
+---
+kind: understand
+title: Payments
+cites:
+  - path: src/
+---

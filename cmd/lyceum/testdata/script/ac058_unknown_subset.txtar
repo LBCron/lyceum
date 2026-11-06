@@ -1,0 +1,52 @@
+# AC58: lyceum test nope exits non-zero and lists the defined subsets
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+
+exec sh -c 'lyceum test nope; echo "exit=$?"'
+stdout '^exit=2$'
+! stdout 'ran'
+stderr '^Can''t run tests: TESTING.md defines no subset "nope"; the defined subsets are: integration, unit$'
+stderr '^Next: run "lyceum test <subset>" with one of: integration, unit$'
+stderr '^Next: run "lyceum test" for the full suite$'
+! exists .lyceum/runs
+
+! exec lyceum test nope --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"TESTING.md defines no subset \\"nope\\"; the defined subsets are: integration, unit","next":\[.*\]\}\}$'
+! stderr .
+
+# With no subsets defined, it says so.
+cp $WORK/TESTING-none.md TESTING.md
+! exec lyceum test unit
+stderr '^Can''t run tests: TESTING.md defines no subset "unit"; it defines no subsets$'
+stderr '^Next: run "lyceum test" for the full suite$'
+! exists .lyceum/runs
+
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  unit: sh ./t.sh unit
+  integration: sh ./t.sh integration
+---
+
+# TESTING.md
+-- TESTING-none.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

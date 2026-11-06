@@ -1,0 +1,39 @@
+# Guard checkchore: with the chore check off, the attack of ac029_chore_manifest_needs_plan.txtar passes check --ci.
+# The chore's plan and add event are written by hand, as "lyceum chore" would write them.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c chore/6ae678-deps
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/6ae678-deps.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'chore: deps'
+
+# A manifest and its lockfile committed with no approved plan: nothing is left, as a
+# trivial chore has no scope check.
+cp $WORK/package.json package.json
+cp $WORK/package.json package-lock.json
+exec git add -A
+exec git commit -q -m 'bump deps'
+exec lyceum check --ci
+stdout '^No findings$'
+! stderr .
+
+-- plan.md --
+---
+id: 6ae678-deps
+type: chore
+title: Deps
+branch: chore/6ae678-deps
+status: in-progress
+gate: build
+approvals: []
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"6ae678-deps","actor":"owner@example.com","commit":"0000000","branch":"chore/6ae678-deps","gate":"build","status":"in-progress","unit_type":"chore"}
+-- package.json --
+{}

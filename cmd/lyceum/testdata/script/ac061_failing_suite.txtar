@@ -1,0 +1,56 @@
+# AC61: when the suite fails, no test file is modified by the CLI and the output lists the failing tests
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login_test.sh login_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The output streams live, then its last 50 lines are printed again with the output path.
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout '^exit=2$'
+stdout -count=1 '^line 11$'
+stdout -count=2 '^line 12$'
+stdout -count=2 '^--- FAIL: TestLogin$'
+stdout '^Failed: sh ./t.sh exited 1 after \S+$'
+stdout '^Last 50 lines of the output:$'
+stdout '^Output: .lyceum/runs/20260101T000000Z-[0-9a-f]{8}\.out$'
+stderr '^Can''t pass the suite: sh ./t.sh exited 1; the full output is in .lyceum/runs/20260101T000000Z-[0-9a-f]{8}\.out$'
+stderr '^Next: fix the code, never the failing test, then run "lyceum test" again$'
+stderr '^Next: or, for a new failure, start a bug: lyceum add bug "<title>"$'
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '"exit":1,'
+
+# The test file is byte for byte as it was, and nothing tracked changed.
+cmp login_test.sh $WORK/login_test.sh
+exec git status --porcelain --untracked-files=all
+! stdout .
+
+# --json: one refusal object, with the run record under data.
+! exec lyceum test --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"sh ./t.sh exited 1; the full output is in [^"]+","next":\[.*\]\},"data":\{"ts":"[^"]+","command":"sh ./t.sh",.*"exit":1,.*\}\}$'
+stderr '^--- FAIL: TestLogin$'
+cmp login_test.sh $WORK/login_test.sh
+
+-- testing.txt --
+testing
+-- t.sh --
+i=1
+while [ $i -le 60 ]; do echo "line $i"; i=$((i+1)); done
+echo '--- FAIL: TestLogin'
+exit 1
+-- login_test.sh --
+# TestLogin: logs in
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

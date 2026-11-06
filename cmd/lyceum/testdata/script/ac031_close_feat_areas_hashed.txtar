@@ -1,0 +1,103 @@
+# AC31: given close on a feat, when it completes, then every area the plan names was in the spec approval's hashed files, the plan has status: closed, and a close event exists
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+exec lyceum plan --new-area orders
+exec lyceum plan --new-area billing
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The feat names orders; spec approval hashes the plan and lyceum/spec/orders.md.
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'areas: [orders]\nacs: [AC900]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+cp $WORK/orders.md lyceum/spec/orders.md
+exec sh -c 'sed "s/^| orders | \`spec\/orders.md\` | | |$/| orders | \`spec\/orders.md\` | | AC900 |/" lyceum/SPEC.md > $WORK/spec.md'
+cp $WORK/spec.md lyceum/SPEC.md
+exec git commit -q -am 'spec delta'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '"gate":"spec","hashes":\{"lyceum/SPEC.md":"sha256:[0-9a-f]{64}","lyceum/plan/6ae678-csv-export.md":"sha256:[0-9a-f]{64}","lyceum/spec/orders.md":"sha256:[0-9a-f]{64}"\}' lyceum/events.jsonl
+
+# The build, then verify clears.
+mkdir src
+cp $WORK/export.sh src/export.sh
+cp $WORK/export_test.sh export_test.sh
+exec git add -A
+exec git commit -q -m 'CSV export'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+
+# An area added to the plan after the spec approval was never approved: close refuses and names it.
+exec sh -c 'sed "s/^areas: \[orders\]$/areas: [orders, billing]/" lyceum/plan/6ae678-csv-export.md > $WORK/plan.md'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'billing too'
+! exec lyceum close
+stderr '^Can''t close 6ae678-csv-export: the plan names area billing, but the spec approval did not hash lyceum/spec/billing.md, so its spec text was never approved$'
+stderr '^Next: write the spec of area billing in lyceum/spec/billing.md, reopen the spec: lyceum amend "<reason>", then run "lyceum approve spec" yourself in a terminal$'
+! grep '"type":"close"' lyceum/events.jsonl
+grep '^status: implemented$' lyceum/plan/6ae678-csv-export.md
+
+# Every area hashed: close sets status closed, keeps gate close, writes one close event and commits them.
+exec sh -c 'sed "s/^areas: \[orders, billing\]$/areas: [orders]/" lyceum/plan/6ae678-csv-export.md > $WORK/plan.md'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'orders only'
+exec lyceum close
+stdout '^Closed 6ae678-csv-export$'
+stdout '^Unit: 6ae678-csv-export$'
+stdout '^Gate: close$'
+grep '^status: closed$' lyceum/plan/6ae678-csv-export.md
+grep '^gate: close$' lyceum/plan/6ae678-csv-export.md
+grep -count=1 '"type":"close"' lyceum/events.jsonl
+grep '"type":"close","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]{7,}","status":"closed"\}$' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: close 6ae678-csv-export$'
+exec git show --name-only --format= HEAD
+cmp stdout $WORK/want-files.txt
+exec git status --porcelain
+! stdout .
+
+# check replays the close: no failing finding on the branch, and no unit is open on it.
+exec lyceum check --ci
+! stdout '^fail:'
+exec lyceum status
+stdout '^No open units$'
+exec lyceum status --all
+stdout '6ae678-csv-export\s+feat\s+feat/6ae678-csv-export\s+closed\s+close\s+close\s+nothing: the unit is closed'
+! exec lyceum close
+stderr '^Can''t close the unit: this branch has no open unit, so there is nothing to close$'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- orders.md --
+# orders
+
+## CSV export
+
+| AC900 | Given orders, when exported, then a CSV header is printed |
+-- export.sh --
+echo "id,total"
+-- export_test.sh --
+# TestExport_AC900: the export prints a CSV header
+sh src/export.sh | grep -q '^id,total$'
+-- want-files.txt --
+lyceum/events.jsonl
+lyceum/plan/6ae678-csv-export.md
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

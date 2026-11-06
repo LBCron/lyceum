@@ -1,0 +1,66 @@
+# AC128: given lyceum plan on a trivial chore, then it moves to plan and check requires the plan approval before code
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum chore 'Bump deps'
+stdout '^Unit: 6ae678-bump-deps$'
+
+# lyceum plan moves the trivial chore to plan, with a gate-reopen event, and commits both.
+exec lyceum plan
+stdout '^Moved 6ae678-bump-deps to plan: chore upgraded to planned$'
+stdout '^Plan: lyceum/plan/6ae678-bump-deps\.md$'
+stdout '^Type: chore$'
+stdout '^Status: planned$'
+stdout '^Gate: plan$'
+stdout '\nNext: run "lyceum approve plan" yourself in a terminal\n$'
+grep '^gate: plan$' lyceum/plan/6ae678-bump-deps.md
+grep '^status: planned$' lyceum/plan/6ae678-bump-deps.md
+grep -count=1 '"type":"gate-reopen","unit":"6ae678-bump-deps",.*"gate":"plan","reason":"chore upgraded to planned","status":"planned"\}$' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: plan plan 6ae678-bump-deps$'
+exec git status --porcelain
+! stdout .
+
+# The replay applies the reopen: the plan's fields agree with the log.
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A second lyceum plan only shows it.
+exec lyceum plan
+! stdout '^Moved'
+grep -count=1 '"type":"gate-reopen"' lyceum/events.jsonl
+
+# Now a planned chore: code before the plan approval fails check, even a manifest-free change.
+cp $WORK/main.go main.go
+exec git add -A
+exec git commit -q -m 'code'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: gate-before-code: the branch changes code before the plan gate is cleared: main.go$'
+
+# Once the owner approves the plan, naming main.go, the code is allowed.
+exec git reset -q --hard HEAD~1
+linesub lyceum/plan/6ae678-bump-deps.md lyceum/plan/6ae678-bump-deps.md 'approvals: []' 'files: [main.go]\napprovals: []'
+grep '^files: \[main.go\]$' lyceum/plan/6ae678-bump-deps.md
+exec git commit -q -am 'draft plan'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-bump-deps.md
+grep '^status: in-progress$' lyceum/plan/6ae678-bump-deps.md
+cp $WORK/main.go main.go
+exec git add -A
+exec git commit -q -m 'code'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# lyceum plan does not move a planned chore at build back.
+exec lyceum plan
+! stdout '^Moved'
+stdout '^Gate: build$'
+
+-- main.go --
+package main
+-- plan.txt --
+plan

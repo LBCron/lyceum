@@ -1,0 +1,58 @@
+# Guard approvetty: with the TTY check off, the piped attacks of ac039_approve_needs_tty.txtar approve.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan-a.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+
+# stdout is a terminal and the gate name is typed there, but stdin is piped.
+ttyrun $WORK/typed.txt 'echo plan | lyceum approve plan'
+stdout '^exit=0$'
+grep '^Approved plan for aaaaaa-tidy' $WORK/tty.out
+grep -count=1 '"type":"approve","unit":"aaaaaa-tidy"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+
+# stdin is a terminal, stdout is not.
+exec git switch -q main
+exec git switch -q -c refactor/bbbbbb-tidy
+mkdir lyceum/plan
+cp $WORK/plan-b.md lyceum/plan/bbbbbb-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+ttyin -stdin $WORK/typed.txt
+exec sh -c 'lyceum approve plan; echo "exit=$?"'
+stdout '^Approved plan for bbbbbb-tidy$'
+stdout '^exit=0$'
+grep -count=1 '"type":"approve","unit":"bbbbbb-tidy"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/bbbbbb-tidy.md
+
+-- typed.txt --
+plan
+-- plan-a.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: plan
+approvals: []
+---
+
+## What and why
+-- plan-b.md --
+---
+id: bbbbbb-tidy
+type: refactor
+title: Tidy
+branch: refactor/bbbbbb-tidy
+status: in-progress
+gate: plan
+approvals: []
+---
+
+## What and why

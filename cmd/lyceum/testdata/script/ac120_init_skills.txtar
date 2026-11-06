@@ -1,0 +1,85 @@
+# AC120: given init wiring Claude Code and Pi, then all eleven Lyceum skills (the eight unit skills plus understand,
+# trace, audit) exist in .agents/skills/ and .claude/skills/, byte-identical to the copies embedded in the binary;
+# given Pi alone, then .claude/skills/ is not written. The embedded copies are the files under
+# internal/templates/skills/ ($TEMPLATES).
+cd $REPO
+exec lyceum init --harness claude --harness pi
+cmp .agents/skills/lyceum-feat/SKILL.md $TEMPLATES/skills/feat/SKILL.md
+cmp .agents/skills/lyceum-bug/SKILL.md $TEMPLATES/skills/bug/SKILL.md
+cmp .agents/skills/lyceum-doc/SKILL.md $TEMPLATES/skills/doc/SKILL.md
+cmp .agents/skills/lyceum-test/SKILL.md $TEMPLATES/skills/test/SKILL.md
+cmp .agents/skills/lyceum-refactor/SKILL.md $TEMPLATES/skills/refactor/SKILL.md
+cmp .agents/skills/lyceum-chore/SKILL.md $TEMPLATES/skills/chore/SKILL.md
+cmp .agents/skills/lyceum-init/SKILL.md $TEMPLATES/skills/init/SKILL.md
+cmp .agents/skills/lyceum-status/SKILL.md $TEMPLATES/skills/status/SKILL.md
+cmp .agents/skills/lyceum-understand/SKILL.md $TEMPLATES/skills/understand/SKILL.md
+cmp .agents/skills/lyceum-trace/SKILL.md $TEMPLATES/skills/trace/SKILL.md
+cmp .agents/skills/lyceum-audit/SKILL.md $TEMPLATES/skills/audit/SKILL.md
+cmp .claude/skills/lyceum-feat/SKILL.md $TEMPLATES/skills/feat/SKILL.md
+cmp .claude/skills/lyceum-bug/SKILL.md $TEMPLATES/skills/bug/SKILL.md
+cmp .claude/skills/lyceum-doc/SKILL.md $TEMPLATES/skills/doc/SKILL.md
+cmp .claude/skills/lyceum-test/SKILL.md $TEMPLATES/skills/test/SKILL.md
+cmp .claude/skills/lyceum-refactor/SKILL.md $TEMPLATES/skills/refactor/SKILL.md
+cmp .claude/skills/lyceum-chore/SKILL.md $TEMPLATES/skills/chore/SKILL.md
+cmp .claude/skills/lyceum-init/SKILL.md $TEMPLATES/skills/init/SKILL.md
+cmp .claude/skills/lyceum-status/SKILL.md $TEMPLATES/skills/status/SKILL.md
+cmp .claude/skills/lyceum-understand/SKILL.md $TEMPLATES/skills/understand/SKILL.md
+cmp .claude/skills/lyceum-trace/SKILL.md $TEMPLATES/skills/trace/SKILL.md
+cmp .claude/skills/lyceum-audit/SKILL.md $TEMPLATES/skills/audit/SKILL.md
+stdout '^Created .agents/skills/lyceum-feat/SKILL.md$'
+stdout '^Created .claude/skills/lyceum-status/SKILL.md$'
+
+# Exactly the eleven skills, nothing else.
+exec sh -c 'ls .agents/skills .claude/skills'
+cmp stdout $WORK/listing.txt
+
+# Pi alone: .agents/skills/ only.
+exec git init -q -b main $WORK/pi
+exec git -C $WORK/pi config user.email owner@example.com
+cd $WORK/pi
+exec lyceum init --harness pi
+cmp .agents/skills/lyceum-init/SKILL.md $TEMPLATES/skills/init/SKILL.md
+! exists .claude
+
+# No harness wired: the skills still go to .agents/skills/.
+exec git init -q -b main $WORK/none
+exec git -C $WORK/none config user.email owner@example.com
+cd $WORK/none
+exec lyceum init
+cmp .agents/skills/lyceum-bug/SKILL.md $TEMPLATES/skills/bug/SKILL.md
+! exists .claude
+
+# A skill edited by hand is put back to the embedded copy on the next init; the rest are unchanged.
+cp $WORK/edited.md .agents/skills/lyceum-bug/SKILL.md
+exec lyceum init --json
+stdout '"updated":\[".agents/skills/lyceum-bug/SKILL.md"\]'
+cmp .agents/skills/lyceum-bug/SKILL.md $TEMPLATES/skills/bug/SKILL.md
+
+-- edited.md --
+my own notes
+-- listing.txt --
+.agents/skills:
+lyceum-audit
+lyceum-bug
+lyceum-chore
+lyceum-doc
+lyceum-feat
+lyceum-init
+lyceum-refactor
+lyceum-status
+lyceum-test
+lyceum-trace
+lyceum-understand
+
+.claude/skills:
+lyceum-audit
+lyceum-bug
+lyceum-chore
+lyceum-doc
+lyceum-feat
+lyceum-init
+lyceum-refactor
+lyceum-status
+lyceum-test
+lyceum-trace
+lyceum-understand

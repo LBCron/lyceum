@@ -1,0 +1,40 @@
+# Unknown TESTING.md frontmatter keys produce a warning naming the key, never a refusal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum test
+stderr '^Warning: TESTING.md frontmatter key "retries" is not one this version reads; it is ignored$'
+stderr '^Warning: TESTING.md frontmatter key "suit" is not one this version reads; it is ignored$'
+stdout '^t.sh ran$'
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+! stdout 'can''t clear a gate'
+
+# --json: stdout is still one object; the warning is on stderr.
+exec lyceum test --json
+jsonobject
+stderr '^Warning: TESTING.md frontmatter key "retries" is not one this version reads; it is ignored$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+retries: 2
+suit: sh ./other.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

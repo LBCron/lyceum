@@ -1,0 +1,41 @@
+# AC112: with TESTING.md timeout: 1s and a test that sleeps 5s, the run is killed, recorded non-zero, and cannot clear a gate
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+! exec lyceum test
+stdout '^started$'
+stdout '^Failed: sh ./t.sh ran over the 1s timeout and was killed \(exit 137\)$'
+stderr '^Can''t pass the suite: sh ./t.sh ran over the 1s timeout and was killed; the full output is in .lyceum/runs/\S+\.out$'
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '"exit":137,"timed_out":true,'
+! grep gate-clear lyceum/events.jsonl
+
+# The background child is in the killed process group: had it survived, it would write child.txt 2s in.
+exec sleep 2
+! exists child.txt
+
+-- testing.txt --
+testing
+-- t.sh --
+echo started
+(sleep 2; echo alive > child.txt) &
+sleep 5
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+timeout: 1s
+---
+
+# TESTING.md

@@ -1,0 +1,8 @@
+# AC165: given AGENTS.md and lyceum/SPEC.md written by init, then both say the agent writes registry rows and check validates them, and AGENTS.md names lyceum/plan/<id>.md as the plan of record for current work
+cd $REPO
+exec lyceum init
+grep 'Agent writes the rows; `lyceum check` validates them' AGENTS.md
+grep 'The agent writes these rows; `lyceum check` validates' lyceum/SPEC.md
+! grep 'CLI owns' AGENTS.md
+! grep 'CLI owns' lyceum/SPEC.md
+grep '`lyceum/plan/<id>.md` is the plan of record for' AGENTS.md

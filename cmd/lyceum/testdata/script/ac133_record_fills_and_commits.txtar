@@ -1,0 +1,203 @@
+# AC133: given lyceum record on an agent-written record with cites: paths only, then id, created and each cite's hash are filled in and exactly that file is committed; given an invalid record, then it refuses naming the field
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+mkdir src/pay
+cp $WORK/service.ts src/pay/service.ts
+cp $WORK/util.ts src/pay/util.ts
+exec git add src
+exec git commit -q -m 'payments'
+
+# The hashes record fills in are git's own for this content.
+exec git rev-parse HEAD:src/pay/service.ts
+stdout '^fcef00c9f52f67593b0c2531ece9c0ae0441c617$'
+exec git rev-parse HEAD:src/pay
+stdout '^108c94b558095fa0a119b07cdf13c701ba43895f$'
+
+# The agent writes a record with cites: paths only; record needs no unit. An untracked
+# scratch file stays out of the commit.
+mkdir lyceum/understand lyceum/trace
+cp $WORK/scratch.txt scratch.txt
+cp $WORK/draft.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+stdout '^Recorded lyceum/understand/6ae678-how-payments-work.md$'
+stdout '^Next: ask the user whether to export it to docs/: lyceum export lyceum/understand/6ae678-how-payments-work.md$'
+! stderr .
+! exists lyceum/understand/payments.md
+cmp lyceum/understand/6ae678-how-payments-work.md $WORK/want.md
+exec git log -1 --format=%s
+stdout '^lyceum: record 6ae678-how-payments-work$'
+exec git show --name-status --format= HEAD
+cmp stdout $WORK/want-commit.txt
+exec git status --porcelain
+cmp stdout $WORK/want-status.txt
+
+# Run again unchanged, it commits nothing; after the code changes, it refreshes the hash
+# under the same id and name.
+exec lyceum record lyceum/understand/6ae678-how-payments-work.md
+stdout '^lyceum/understand/6ae678-how-payments-work.md is already recorded: nothing changed$'
+exec git log -1 --format=%s
+stdout '^lyceum: record 6ae678-how-payments-work$'
+cp $WORK/util2.ts src/pay/util.ts
+exec git commit -q -am 'round up'
+exec lyceum record lyceum/understand/6ae678-how-payments-work.md
+stdout '^Recorded lyceum/understand/6ae678-how-payments-work.md$'
+exec git show --name-status --format= HEAD
+cmp stdout $WORK/want-refresh.txt
+! grep 108c94b558095fa0a119b07cdf13c701ba43895f lyceum/understand/6ae678-how-payments-work.md
+grep '^id: 6ae678-how-payments-work$' lyceum/understand/6ae678-how-payments-work.md
+
+# An invalid record is refused naming the field, and nothing is written or committed.
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+cp $WORK/no-title.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr '^Can''t record: lyceum/trace/flow.md is not a valid record: field title: missing$'
+stderr '^Next: fix it in lyceum/trace/flow.md, then run "lyceum record lyceum/trace/flow.md" again$'
+! stdout .
+cmp lyceum/trace/flow.md $WORK/no-title.md
+
+cp $WORK/bad-kind.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr 'field kind: "notes" is not understand, trace or audit$'
+
+cp $WORK/draft.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr 'field kind: "understand", but the record is in lyceum/trace/$'
+
+cp $WORK/absent.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr 'field cites\[1\].path: src/pay/gone.ts does not exist$'
+
+cp $WORK/both.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr 'field cites\[0\]: has both blob and tree; a cite is a file \(blob\) or a folder \(tree\)$'
+
+cp $WORK/outside.md lyceum/trace/flow.md
+! exec lyceum record lyceum/trace/flow.md
+stderr 'field cites\[0\].path: "../etc" is not inside the repo$'
+
+cmp lyceum/trace/flow.md $WORK/outside.md
+exec git rev-parse HEAD
+cmp stdout $WORK/head.txt
+
+# Only a .md directly in a record folder is a record.
+cp $WORK/trace.md notes.md
+! exec lyceum record notes.md
+stderr '^Can''t record: notes.md is not a .md file directly in lyceum/understand/, lyceum/trace/ or lyceum/audit/, or an area file in lyceum/spec/$'
+
+# Another staged file is refused: record commits only the record.
+cp $WORK/trace.md lyceum/trace/flow.md
+exec git add scratch.txt
+! exec lyceum record lyceum/trace/flow.md
+stderr '^Can''t record: other files are staged, and record commits only the record:$'
+stderr '^  scratch.txt$'
+stderr '^Next: unstage them: git restore --staged -- scratch.txt, then run "lyceum record lyceum/trace/flow.md" again$'
+exec git restore --staged -- scratch.txt
+
+# Run from a subfolder, with the record's id given, it keeps the name and commits it.
+cd lyceum/trace
+exec lyceum record flow.md
+stdout '^Recorded lyceum/trace/flow.md$'
+cd $REPO
+grep '^id: abcdef-request-flow$' lyceum/trace/flow.md
+grep '^created: 2026-01-01T00:00:00Z$' lyceum/trace/flow.md
+grep '^    tree: "' lyceum/trace/flow.md
+exec git show --name-status --format= HEAD
+cmp stdout $WORK/want-flow.txt
+
+-- service.ts --
+export function createPayment() {}
+-- util.ts --
+export const round = (n) => n
+-- util2.ts --
+export const round = (n) => Math.ceil(n)
+-- scratch.txt --
+not part of any record
+-- draft.md --
+---
+kind: understand
+title: How payments work
+cites:
+  - path: src/pay/service.ts
+    symbol: createPayment()
+  - path: src/pay/
+---
+
+## Summary
+
+Payments start in createPayment().
+-- want.md --
+---
+id: 6ae678-how-payments-work
+kind: understand
+title: How payments work
+created: 2026-01-01T00:00:00Z
+cites:
+  - path: src/pay/service.ts
+    symbol: createPayment()
+    blob: "fcef00c9f52f67593b0c2531ece9c0ae0441c617"
+  - path: src/pay/
+    tree: "108c94b558095fa0a119b07cdf13c701ba43895f"
+---
+
+## Summary
+
+Payments start in createPayment().
+-- want-commit.txt --
+A	lyceum/understand/6ae678-how-payments-work.md
+-- want-refresh.txt --
+M	lyceum/understand/6ae678-how-payments-work.md
+-- want-flow.txt --
+A	lyceum/trace/flow.md
+-- want-status.txt --
+?? scratch.txt
+-- no-title.md --
+---
+kind: trace
+cites:
+  - path: src/pay/service.ts
+---
+-- bad-kind.md --
+---
+kind: notes
+title: Request flow
+---
+-- absent.md --
+---
+kind: trace
+title: Request flow
+cites:
+  - path: src/pay/service.ts
+  - path: src/pay/gone.ts
+---
+-- both.md --
+---
+kind: trace
+title: Request flow
+cites:
+  - path: src/pay/
+    blob: "1"
+    tree: "2"
+---
+-- outside.md --
+---
+kind: trace
+title: Request flow
+cites:
+  - path: ../etc
+---
+-- trace.md --
+---
+id: abcdef-request-flow
+kind: trace
+title: Request flow
+cites:
+  - path: src/pay/
+---
+
+```mermaid
+sequenceDiagram
+  Client->>Service: createPayment()
+```

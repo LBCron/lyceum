@@ -1,0 +1,51 @@
+# AC109: add on a tree with uncommitted changes refuses, lists the changed files and prints the commit or stash command
+cd $REPO
+
+# Not set up comes first, even on a dirty tree.
+cp $WORK/note.txt note.txt
+! exec lyceum add feat 'CSV export'
+! stdout .
+stderr '^Can''t add a unit: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+rm note.txt
+
+# Right after init, its files are uncommitted.
+exec lyceum init
+! exec lyceum add feat 'CSV export'
+! stdout .
+stderr '^Can''t add a unit: the working tree has uncommitted changes:$'
+stderr '^  AGENTS.md$'
+stderr '^  RULES.md$'
+stderr '^  lyceum/SPEC.md$'
+stderr '^  lyceum/config.yaml$'
+stderr '^  lyceum/events.jsonl$'
+stderr '^  .gitattributes$'
+stderr '^  .gitignore$'
+stderr '^Next: commit them: git add -A && git commit -m "<message>", then run lyceum add again$'
+stderr '^Next: or stash them: git stash -u, then run lyceum add again$'
+exec git branch --list
+stdout -count=1 '^.'
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# A modified tracked file and an untracked one are both listed; stash clears them.
+cp $WORK/note.txt RULES.md
+cp $WORK/note.txt note.txt
+! exec lyceum add feat 'CSV export'
+stderr '^  RULES.md$'
+stderr '^  note.txt$'
+! exec lyceum add feat 'CSV export' --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"the working tree has uncommitted changes:\\n  RULES.md\\n  note.txt","next":\["commit them: git add -A && git commit -m \\"<message>\\", then run lyceum add again","or stash them: git stash -u, then run lyceum add again","if a tool writes note.txt on its own, ignore it instead: add it to .gitignore and commit that"\]\}\}$'
+exec git stash -q -u
+exec lyceum add feat 'CSV export'
+stdout '^Unit: 6ae678-csv-export$'
+
+# A dirty tree is refused before the open unit on this branch.
+cp $WORK/note.txt note.txt
+! exec lyceum add bug 'Broken export'
+stderr '^Can''t add a unit: the working tree has uncommitted changes:$'
+! stderr 'is open on this branch'
+
+-- note.txt --
+a change

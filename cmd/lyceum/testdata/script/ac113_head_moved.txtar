@@ -1,0 +1,68 @@
+# AC113: given a passing full-suite run recorded at commit A, when HEAD moves to commit B before the gate clears, then that run cannot clear the gate
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A feat at build whose plan adds no ACs: a passing gate-evidence run is all verify needs.
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: []\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The suite commits B while it runs: the run is recorded at A, and HEAD is B when it would clear.
+# .lyceum/ is gitignored, so the marker leaves the tree clean.
+exec git rev-parse --short HEAD
+cp stdout $WORK/a.txt
+mkdir .lyceum
+exec sh -c 'echo > .lyceum/move'
+exec lyceum test
+stdout '^t.sh committed B$'
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^This run can''t clear a gate: it ran at commit [0-9a-f]{7,}, but HEAD is now [0-9a-f]{7,}$'
+stdout '^Next: run "lyceum test" again at HEAD$'
+cp stdout $WORK/run1.txt
+exec sh -c 'grep -qF "it ran at commit $(cat $WORK/a.txt), but HEAD is now $(git rev-parse --short HEAD)" $WORK/run1.txt'
+exec sh -c 'grep -qF "\"commit\":\"$(cat $WORK/a.txt)\"" .lyceum/runs/*.json'
+exec git log -1 --format=%s
+stdout '^B$'
+! grep gate-clear lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+
+# A fresh run at B is gate evidence, and it clears verify.
+exec lyceum test
+! stdout 'committed B'
+! stdout 'can''t clear a gate'
+stdout '^Cleared verify for 6ae678-csv-export$'
+grep '^gate: close$' lyceum/plan/6ae678-csv-export.md
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+stdout '^1$'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+if [ -e .lyceum/move ]; then
+  rm .lyceum/move
+  git commit -q --allow-empty -m B
+  echo t.sh committed B
+fi
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

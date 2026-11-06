@@ -1,0 +1,7 @@
+{
+  "toolName": "bash",
+  "toolCallId": "CALL",
+  "input": {
+    "command": "echo lyceum approve spec"
+  }
+}

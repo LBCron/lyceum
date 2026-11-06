@@ -1,0 +1,56 @@
+# AC171: given a feat at build and a committed edit to an approved TESTING.md with the hook installed, then check reports the testing finding, no bypass event is written, the tree stays clean and amend proceeds
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add feat 'CSV export'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+cp $WORK/TESTING2.md TESTING.md
+exec git add TESTING.md
+exec git commit -q -m 'edit TESTING.md'
+stderr '^fail: testing: TESTING.md changed since its last approval'
+exec git commit -q --allow-empty -m 'another commit'
+exec lyceum check
+stdout '^fail: testing: TESTING.md changed since its last approval'
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+exec lyceum amend 'the suite changed'
+stdout '^Amended 6ae678-csv-export: the suite changed$'
+
+-- defaults.txt --
+
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+echo ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+-- TESTING2.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+Edited.

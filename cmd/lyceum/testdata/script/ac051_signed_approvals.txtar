@@ -1,0 +1,80 @@
+# AC51: given approvals.signed: true and an approval commit not signed by the owner's key, then check --ci fails
+[!exec:ssh-keygen] skip 'signing is proven with ssh keys'
+cd $REPO
+exec lyceum init
+exec ssh-keygen -q -t ed25519 -N '' -f $WORK/owner_key
+exec ssh-keygen -q -t ed25519 -N '' -f $WORK/other_key
+exec sh -c 'echo "owner@example.com $(cat $WORK/owner_key.pub)" > $WORK/allowed'
+exec git config gpg.format ssh
+exec git config gpg.ssh.allowedSignersFile $WORK/allowed
+exec git config user.signingkey $WORK/owner_key.pub
+exec sh -c 'sed "s/signed: false/signed: true/" lyceum/config.yaml > $WORK/config.yaml'
+cp $WORK/config.yaml lyceum/config.yaml
+grep 'signed: true' lyceum/config.yaml
+cp $WORK/TESTING.md TESTING.md
+exec git add -A
+exec git commit -q -m 'setup'
+
+# Signed by the owner's key: the commit has a good signature and the check is quiet.
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git log -1 --format=%G?:%GS
+stdout '^G:owner@example.com$'
+exec lyceum check --ci
+! stdout 'signed-approvals'
+
+# git can't sign: the approval is refused, and leaves nothing behind.
+exec lyceum add feat 'CSV export'
+exec git config user.signingkey $WORK/missing.pub
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'approvals.signed is on, and git can''t sign a commit'
+! grep '"type":"approve".*"gate":"spec"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+
+# Signed by another key: CI fails naming the gate; locally it warns, with no bypass event.
+exec git config user.signingkey $WORK/other_key.pub
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'signed-approvals: the spec approval is in commit [0-9a-f]+, which has no good signature by the owner''s key \(owner@example.com\)$'
+exec lyceum check --pre-commit
+stdout 'signed-approvals: the spec approval'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Another unit: an event added by hand in an unsigned commit, after a good approval commit, fails too.
+exec git config user.signingkey $WORK/owner_key.pub
+exec git switch -q main
+exec lyceum add doc 'Guide'
+exec sh -c 'grep "\"gate\":\"testing\"" lyceum/events.jsonl | sed "s/\"unit\":\"\"/\"unit\":\"3f4fbd-guide\"/; s/\"gate\":\"testing\"/\"gate\":\"draft\"/" >> lyceum/events.jsonl'
+exec git commit -q -am 'forged approval' --no-gpg-sign
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'signed-approvals: the draft approval is in commit'
+
+# A later approval of a gate in an unsigned commit fails, though an earlier one of that gate is signed.
+exec sh -c 'grep "\"gate\":\"testing\"" lyceum/events.jsonl | sed "s/}\$/,\"forged\":true}/" >> lyceum/events.jsonl'
+exec git commit -q -am 'forged re-approval' --no-gpg-sign
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'signed-approvals: the testing approval is in commit'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- TESTING.md --
+---
+lyceum: 1
+suite: "true"
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

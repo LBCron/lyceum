@@ -1,0 +1,58 @@
+# AC56: with an approved TESTING.md, lyceum test spawns exactly the suite command and records exit code, commit, duration and output hash
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The suite runs as written, in the repo root, its output streamed live.
+exec lyceum test
+stdout '^t.sh ran with 0 arguments$'
+stderr '^t.sh to stderr$'
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Recorded: .lyceum/runs/20260101T000000Z-[0-9a-f]{8}\.json$'
+stdout '\nNext: start a unit: lyceum add feat "<title>"\n$'
+
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '^\{"ts":"2026-01-01T00:00:00Z","command":"sh ./t.sh","subset":null,"commit":"[0-9a-f]{7,}","dirty":false,"exit":0,"timed_out":false,"duration_ms":\d+,"output":"20260101T000000Z-[0-9a-f]{8}\.out","output_sha256":"sha256:[0-9a-f]{64}","testing_sha256":"sha256:[0-9a-f]{64}"\}$'
+
+# commit is HEAD, the output hash is of the stored file, and the TESTING.md hash is of TESTING.md.
+exec sh -c 'grep -qF "\"commit\":\"$(git rev-parse --short HEAD)\"" .lyceum/runs/*.json'
+exec sh -c 'cp .lyceum/runs/*.out "$WORK/run.out"'
+grep '^t.sh ran with 0 arguments$' $WORK/run.out
+grep '^t.sh to stderr$' $WORK/run.out
+sha256file $WORK/run.out
+cp stdout $WORK/out.hash
+exec sh -c 'grep -qF "\"output_sha256\":\"$(cat "$WORK/out.hash")\"" .lyceum/runs/*.json'
+sha256file TESTING.md
+cp stdout $WORK/testing.hash
+exec sh -c 'grep -qF "\"testing_sha256\":\"$(cat "$WORK/testing.hash")\"" .lyceum/runs/*.json'
+
+# --json: one object with the record under data; the command's output goes to stderr.
+exec lyceum test --json
+jsonobject
+stdout '^\{"ok":true,"unit":null,"gate":null,"next":"start a unit: lyceum add feat \\"<title>\\"","data":\{"ts":"2026-01-01T00:00:00Z","command":"sh ./t.sh","subset":null,"commit":"[0-9a-f]{7,}","dirty":false,"exit":0,.*\}\}$'
+stderr '^t.sh ran with 0 arguments$'
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+stdout '^ *2$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo "t.sh ran with $# arguments"
+echo t.sh to stderr >&2
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

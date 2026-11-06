@@ -1,0 +1,134 @@
+# AC132: given a project where no file matches test_files and a doc unit at verify whose diff has no code, when lyceum test runs, then verify clears with no_tests: true; with a code file in the diff it refuses and names the file; a feat in the same project still refuses
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add doc 'Calc guide'
+grep '^gate: draft$' lyceum/plan/6ae678-calc-guide.md
+
+# The doc and a code change: no tests, and the diff has code, so it refuses naming the file.
+mkdir docs
+cp $WORK/guide.md docs/calc.md
+cp $WORK/calc-v2.sh src/calc.sh
+exec git add -A
+exec git commit -q -m 'guide and a code change'
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t run tests: 0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\); a doc unit clears verify with no tests only when the branch changes no code, and it changes: src/calc.sh$'
+stderr '^Next: take those changes off this branch, keeping only docs and other non-code files, then run "lyceum test"$'
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+
+# A dirty tree keeps the AC63 refusal.
+exec git checkout -q main -- src/calc.sh
+! exec lyceum test
+stderr '^Can''t run tests: 0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\)$'
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+
+# Only non-code files: verify clears with no tests, and no run is recorded.
+exec git commit -q -m 'docs only'
+exec lyceum test
+stdout '^0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\)$'
+stdout '^Cleared verify for 6ae678-calc-guide with no tests: the branch changes no code$'
+stdout '^Gate: close$'
+grep -count=1 '"type":"gate-clear","unit":"6ae678-calc-guide",.*"gate":"verify"' lyceum/events.jsonl
+grep '"gate":"verify","no_tests":true' lyceum/events.jsonl
+! grep '"run":' lyceum/events.jsonl
+! exists .lyceum/runs
+grep '^status: implemented$' lyceum/plan/6ae678-calc-guide.md
+exec git status --porcelain
+! stdout .
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A feat in the same project still refuses.
+exec git checkout -q main
+exec lyceum add feat 'CSV export'
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t run tests: 0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\)$'
+stderr '^Next: write tests for the project'
+! grep '"unit":"6ae678-csv-export".*"type":"gate-clear"' lyceum/events.jsonl
+
+# A feat at build whose branch diff has no code still refuses: only a doc clears verify with no tests.
+cp $WORK/plan.md lyceum/plan/3f4fbd-csv-export.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec sh -c 'echo "| orders | spec/orders.md | Orders | |" >> lyceum/SPEC.md'
+exec git add -A
+exec git commit -q -m 'draft spec'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/3f4fbd-csv-export.md
+mkdir docs
+cp $WORK/guide.md docs/export.md
+exec git add -A
+exec git commit -q -m 'docs only'
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t run tests: 0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\)$'
+stderr '^Next: write tests for the project'
+! grep '"type":"gate-clear","unit":"3f4fbd-csv-export",.*"gate":"verify"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/3f4fbd-csv-export.md
+
+-- spec.txt --
+spec
+-- orders.md --
+# Orders
+
+AC1: export orders as CSV.
+-- plan.md --
+---
+id: 3f4fbd-csv-export
+type: feat
+title: CSV export
+branch: feat/3f4fbd-csv-export
+status: planned
+gate: spec
+approvals: []
+areas: [orders]
+files: [src/orders/export.go]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+
+## Steps
+
+1. Write the exporter.
+
+## Progress
+
+- [ ] T1 write the exporter
+
+## Log
+-- testing.txt --
+testing
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-v2.sh --
+add() { echo $(( $1 + $2 )); }
+-- guide.md --
+# Calc
+
+Source src/calc.sh and call add 1 2.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

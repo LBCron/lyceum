@@ -1,0 +1,35 @@
+# distribution.md "lyceum init" step 3: re-running init replaces only the text between the AGENTS.md markers
+# with the current section, without asking; every byte outside the markers stays as it was.
+cd $REPO
+exec sh -c 'cat $WORK/before.md $WORK/old-section.md $WORK/after.md > AGENTS.md'
+
+# No prompt (stdin is closed): the old section is replaced by the embedded one.
+exec lyceum init
+! stderr 'Append this Lyceum section'
+! stderr '^<!-- lyceum:start -->$'
+stdout '^Updated AGENTS\.md$'
+exec sh -c '{ cat $WORK/before.md $TEMPLATES/agents.md $WORK/after.md; } > $WORK/want.md'
+cmp AGENTS.md $WORK/want.md
+
+# Again: the section is current, so AGENTS.md is unchanged.
+exec lyceum init
+! stderr 'Append this Lyceum section'
+! stdout 'AGENTS\.md'
+cmp AGENTS.md $WORK/want.md
+
+-- before.md --
+# My project
+
+Build with make.
+
+-- old-section.md --
+<!-- lyceum:start -->
+## Lyceum
+
+An older section.
+<!-- lyceum:end -->
+-- after.md --
+
+## Notes
+
+Keep these.

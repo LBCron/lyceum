@@ -1,0 +1,72 @@
+# AC102: given a bug with verify cleared and no approve cause event, when check --ci runs on its branch, then it fails and names approve cause; after the owner approves, the event hashes the plan and every file in the fix diff
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+
+# Before verify, the check has nothing to say.
+exec lyceum check --ci
+! stdout 'approve cause'
+
+exec sh -c 'printf "\n## Root cause\n\nlogin_plus returned the wrong value.\n" >> lyceum/plan/6ae678-login-plus.md'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'root cause and fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+
+# Verify cleared, no approve cause: CI fails naming it; locally it warns, with no bypass event.
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'cause: bug 6ae678-login-plus has verify cleared and no approve cause event$'
+stderr '^Next: run "lyceum approve cause" yourself in a terminal$'
+exec lyceum check --pre-commit
+stdout 'no approve cause event'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# The owner approves: the event hashes the plan and the fix file, and the check passes.
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+sha256file src/login.sh
+cp stdout $WORK/fix.txt
+exec sh -c 'grep "\"type\":\"approve\",\"unit\":\"6ae678-login-plus\"" lyceum/events.jsonl | grep "\"gate\":\"cause\"" | grep -F "\"src/login.sh\":\"$(cat $WORK/fix.txt)\"" | grep -c "\"lyceum/plan/6ae678-login-plus.md\":\"sha256:"'
+stdout '^1$'
+exec lyceum check --ci
+! stdout 'approve cause'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

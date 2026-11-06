@@ -1,0 +1,14 @@
+{
+  "session_id": "SESSION",
+  "transcript_path": "/home/user/transcript.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "PreToolUse",
+  "permission_mode": "bypass",
+  "tool_use_id": "CALL",
+  "tool_name": "write_file",
+  "tool_display_name": "WRITE",
+  "tool_input": {
+    "file_path": "/repo/note.txt",
+    "content": "hi\n"
+  }
+}

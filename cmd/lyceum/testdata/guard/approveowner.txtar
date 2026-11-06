@@ -1,0 +1,37 @@
+# Guard approveowner: with the owner check off, the attack of ac045_non_owner_approval.txtar approves.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+grep '^owner: owner@example.com$' lyceum/config.yaml
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+
+# Someone else approves.
+exec git config user.email other@example.com
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=0$'
+! stderr 'does not count'
+grep '^Approved intent for aaaaaa-tidy' $WORK/tty.out
+grep -count=1 '"type":"approve"' lyceum/events.jsonl
+grep '"by":"other@example.com","counts":true,"gate":"intent"' lyceum/events.jsonl
+grep '^gate: baseline$' lyceum/plan/aaaaaa-tidy.md
+
+-- intent.txt --
+intent
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: intent
+approvals: []
+---
+
+## What and why

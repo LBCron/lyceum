@@ -1,0 +1,83 @@
+# AC44: with uncommitted changes to src/a.go, approve plan refuses and lists src/a.go
+# A refactor: intent is a judgment gate that does not open code, plan is the one that does.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/a.go src/a.go
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+
+# At intent, a dirty src/a.go is not refused by this rule.
+exec sh -c 'echo "// edited" >> src/a.go'
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=0$'
+grep '^Approved intent for aaaaaa-tidy' $WORK/tty.out
+# src/a.go stays uncommitted: the approval commit holds only the plan and the event.
+exec git show --format= --name-only HEAD
+cmp stdout $WORK/want-committed.txt
+exec git status --porcelain
+cmp stdout $WORK/want-dirty.txt
+
+# baseline clears on a recorded test run, which is not built yet: the gate is moved to plan by hand.
+exec sh -c 'sed "s/^gate: baseline$/gate: plan/" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+exec git commit -q -m 'baseline done' lyceum/plan/aaaaaa-tidy.md
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+cp lyceum/plan/aaaaaa-tidy.md $WORK/plan-before.md
+
+# At plan, the code-opening gate, every changed path outside lyceum/ is listed and nothing is approved.
+cp $WORK/a.go src/b.go
+ttyrun $WORK/plan.txt 'lyceum approve plan'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: these files outside lyceum/ have changes made before plan was approved:$'
+stderr '^  src/a.go$'
+stderr '^  src/b.go$'
+stderr '^Next: review them, then stash them: git stash -u, then run lyceum approve plan again$'
+stderr '^Next: or, if they belong in the branch, commit them on purpose: git add <paths> && git commit -m "<message>", then run lyceum approve plan again$'
+! stderr 'Type the gate name'
+! grep 'Approved' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/aaaaaa-tidy.md $WORK/plan-before.md
+
+# With the code changes stashed, an uncommitted change inside lyceum/ (the plan itself) is allowed,
+# and the approval commit commits it.
+exec git stash -q -u
+exec sh -c 'echo "Tidy the parser." >> lyceum/plan/aaaaaa-tidy.md'
+ttyrun $WORK/plan.txt 'lyceum approve plan'
+stdout '^exit=0$'
+grep '^Approved plan for aaaaaa-tidy' $WORK/tty.out
+grep -count=2 '"type":"approve"' lyceum/events.jsonl
+grep '^Tidy the parser.$' lyceum/plan/aaaaaa-tidy.md
+exec git show --format= --name-only HEAD
+cmp stdout $WORK/want-committed.txt
+exec git status --porcelain
+! stdout .
+
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- a.go --
+package src
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: intent
+approvals: []
+---
+
+## What and why
+-- want-committed.txt --
+lyceum/events.jsonl
+lyceum/plan/aaaaaa-tidy.md
+-- want-dirty.txt --
+ M src/a.go

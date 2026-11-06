@@ -1,0 +1,128 @@
+# AC81: given a trace exported to docs/, then the exported file contains a Mermaid sequenceDiagram block
+cd $REPO
+exec lyceum init
+mkdir src lyceum/trace lyceum/understand
+cp $WORK/order.go src/order.go
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+
+# A trace with no Mermaid sequenceDiagram block is refused, and nothing is written.
+cp $WORK/no-diagram.md lyceum/trace/order.md
+exec lyceum record lyceum/trace/order.md
+stdout '^Recorded lyceum/trace/6ae678-order-placement.md$'
+! exec lyceum export lyceum/trace/6ae678-order-placement.md
+stderr '^Can''t export: lyceum/trace/6ae678-order-placement.md has no Mermaid sequenceDiagram block, which an exported trace carries$'
+stderr '^Next: add a ```mermaid block with a sequenceDiagram of the flow to lyceum/trace/6ae678-order-placement.md, '
+! exists docs
+
+# With the diagram, the trace exports to docs/trace/<slug>.md: a header linking back to the
+# record and naming its id, then the record's body, diagram included. Only the export is committed.
+cp $WORK/with-diagram.md lyceum/trace/6ae678-order-placement.md
+exec lyceum record lyceum/trace/6ae678-order-placement.md
+exec lyceum export lyceum/trace/6ae678-order-placement.md
+stdout '^Exported lyceum/trace/6ae678-order-placement.md to docs/trace/order-placement.md$'
+cmp docs/trace/order-placement.md $WORK/want-export.md
+exec git log -1 --format=%s
+stdout '^lyceum: export 6ae678-order-placement$'
+exec git show --name-only --format= HEAD
+stdout '^docs/trace/order-placement.md$'
+stdout -count=1 '^.+$'
+exec git status --porcelain
+! stdout .
+
+# Exporting again from the same record overwrites its own export; unchanged, it commits nothing.
+exec lyceum export lyceum/trace/6ae678-order-placement.md
+stdout '^docs/trace/order-placement.md is already exported: nothing changed$'
+
+# A file there that is not an export of this record is never overwritten: another record's export,
+# or a hand-written doc.
+cp $WORK/understand.md lyceum/understand/order.md
+exec lyceum record lyceum/understand/order.md
+stdout '^Recorded lyceum/understand/3f4fbd-order-placement.md$'
+! exec lyceum export lyceum/understand/3f4fbd-order-placement.md docs/trace/order-placement.md
+stderr '^Can''t export: docs/trace/order-placement.md exists and was not exported from record 3f4fbd-order-placement, so export won''t overwrite it$'
+stderr '^Next: export to another path: lyceum export lyceum/understand/3f4fbd-order-placement.md docs/<path>.md$'
+cmp docs/trace/order-placement.md $WORK/want-export.md
+exec lyceum export lyceum/understand/3f4fbd-order-placement.md
+stdout '^Exported lyceum/understand/3f4fbd-order-placement.md to docs/understand/order-placement.md$'
+cp $WORK/handwritten.md docs/handwritten.md
+exec git add docs/handwritten.md
+exec git commit -q -m 'docs'
+! exec lyceum export lyceum/trace/6ae678-order-placement.md docs/handwritten.md
+stderr 'docs/handwritten.md exists and was not exported from record 6ae678-order-placement'
+cmp docs/handwritten.md $WORK/handwritten.md
+
+# Only under docs/.
+! exec lyceum export lyceum/trace/6ae678-order-placement.md README.md
+stderr '^Can''t export: README.md is not a .md file under docs/$'
+
+# A broken record, or an invalid one, is refused.
+exec git rm -q src/order.go
+! exec lyceum export lyceum/trace/6ae678-order-placement.md
+stderr '^Can''t export: lyceum/trace/6ae678-order-placement.md is broken: missing src/order.go, so it no longer matches the code$'
+cp $WORK/no-diagram.md lyceum/trace/draft.md
+! exec lyceum export lyceum/trace/draft.md
+stderr '^Can''t export: lyceum/trace/draft.md is invalid: field id: missing$'
+
+-- order.go --
+package src
+
+func Place() {}
+-- no-diagram.md --
+---
+kind: trace
+title: Order placement
+cites:
+  - path: src/order.go
+    symbol: Place()
+---
+# Order placement
+
+## Steps
+
+- [read] Place() writes the order row
+-- with-diagram.md --
+---
+id: 6ae678-order-placement
+kind: trace
+title: Order placement
+cites:
+  - path: src/order.go
+    symbol: Place()
+---
+# Order placement
+
+## Steps
+
+- [read] Place() writes the order row
+
+```mermaid
+sequenceDiagram
+    Client->>Place: POST /orders
+    Place->>DB: insert order
+```
+-- want-export.md --
+<!-- lyceum export: record 6ae678-order-placement from lyceum/trace/6ae678-order-placement.md -->
+> Exported from [lyceum/trace/6ae678-order-placement.md](../../lyceum/trace/6ae678-order-placement.md) (record `6ae678-order-placement`). Edit the record, then export it again.
+
+# Order placement
+
+## Steps
+
+- [read] Place() writes the order row
+
+```mermaid
+sequenceDiagram
+    Client->>Place: POST /orders
+    Place->>DB: insert order
+```
+-- understand.md --
+---
+kind: understand
+title: Order placement
+cites:
+  - path: src/order.go
+---
+# Orders
+-- handwritten.md --
+# Handwritten

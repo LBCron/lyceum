@@ -1,0 +1,37 @@
+# AC95: bare lyceum prints the Lifecycle, Change and Inspect groups
+cd $REPO
+exec lyceum
+stdout '^Lifecycle:$'
+stdout '^Change:$'
+stdout '^Inspect:$'
+! stdout 'changed-files'
+! stderr .
+
+# Every menu command has a description; cobra's help command is not listed.
+stdout '^  init +\S'
+stdout '^  status +\S'
+stdout '^  check +\S'
+stdout '^  approve +\S'
+stdout '^  plan +\S'
+stdout '^  amend +\S'
+stdout '^  close +\S'
+stdout '^  test +\S'
+stdout '^  log +\S'
+stdout '^  eject +\S'
+stdout '^  doctor +\S'
+stdout '^  add +\S'
+stdout '^  refactor +\S'
+stdout '^  chore +\S'
+stdout '^  understand +\S'
+stdout '^  trace +\S'
+stdout '^  audit +\S'
+stdout '^  export +\S'
+! stdout '^\s+help\b'
+! stdout 'Additional Commands'
+
+# --help lists the same commands, still without help.
+exec lyceum --help
+stdout '^Lifecycle:$'
+stdout '^  export +\S'
+! stdout '^\s+help\b'
+! stderr .

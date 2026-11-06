@@ -1,0 +1,69 @@
+# changed-files: the branch's changes against its base plus uncommitted ones, one per line, for TESTING.md subsets
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git clone -q $REPO $WORK/clone
+cd $WORK/clone
+exec git config user.email owner@example.com
+exec git config user.name 'Test Owner'
+
+# On the base branch with a clean tree, nothing changed.
+exec lyceum changed-files
+! stdout .
+! stderr .
+
+# A branch commit, an uncommitted edit to it and an untracked file: sorted, each once.
+exec git switch -q -c feat/x
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'tests'
+cp $WORK/t2.sh t.sh
+cp $WORK/t.sh new.txt
+exec lyceum changed-files
+cmp stdout $WORK/want.txt
+
+# With only origin/main left, the base still resolves.
+exec git branch -q -D main
+exec lyceum changed-files
+cmp stdout $WORK/want.txt
+
+# A subset can pass them to its command.
+exec lyceum test changed
+stdout '^args: TESTING.md a_test.sh new.txt t.sh$'
+
+# A base that resolves neither way is refused, as check refuses it.
+cp $WORK/config-nope.yaml lyceum/config.yaml
+! exec lyceum changed-files
+! stdout .
+stderr '^Can''t list changed files: the base branch nope is missing: neither nope nor origin/nope exists here$'
+stderr '^Next: git fetch origin nope$'
+
+-- want.txt --
+TESTING.md
+a_test.sh
+new.txt
+t.sh
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  changed: sh ./t.sh $(lyceum changed-files)
+---
+
+# TESTING.md
+-- t.sh --
+echo "args: $*"
+-- t2.sh --
+echo "args: $*"
+echo changed
+-- a_test.sh --
+# a test
+-- config-nope.yaml --
+lyceum: 1
+owner: owner@example.com
+base_branch: nope

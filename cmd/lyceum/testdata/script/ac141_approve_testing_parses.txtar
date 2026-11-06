@@ -1,0 +1,58 @@
+# AC141: given a TESTING.md with two errors the lyceum test parser rejects, when approve testing runs, then it refuses before the summary, names both errors in one output, and writes no event
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/bad.md TESTING.md
+exec git add -A
+exec git commit -q -m 'bad TESTING.md'
+cp lyceum/events.jsonl $WORK/before.jsonl
+
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=2$'
+stderr '^Can''t approve testing: TESTING.md frontmatter: lyceum: schema version 2 is not supported; this build reads lyceum: 1$'
+stderr '^suite: missing; it is the command that runs the full suite$'
+stderr -count=1 'Can''t'
+stderr '^Next: fix TESTING.md, then run "lyceum approve testing" yourself in a terminal$'
+! stderr 'Files to approve'
+! stderr 'Type the gate name'
+cmp lyceum/events.jsonl $WORK/before.jsonl
+
+# lyceum test reads it with the same parser, and reports both too.
+exec sh -c 'lyceum test; echo "exit=$?"'
+stderr 'lyceum: schema version 2 is not supported'
+stderr 'suite: missing'
+
+# In a bare walk this refusal is not a typed mismatch: the walk goes on to the unit's gate.
+exec lyceum add feat 'CSV export'
+ttyrun $WORK/spec.txt 'lyceum approve'
+stdout '^exit=2$'
+stderr '^Can''t approve testing: TESTING.md frontmatter: lyceum: schema version 2'
+stderr '^Gate: spec$'
+stderr 'Can''t approve: approved spec; not approved: testing$'
+grep 'Approved spec for 6ae678-csv-export' $WORK/tty.out
+
+# Fixed, it is approved.
+cp $WORK/good.md TESTING.md
+exec git add -A
+exec git commit -q -m 'good TESTING.md'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+grep 'Approved testing' $WORK/tty.out
+
+-- bad.md --
+---
+lyceum: 2
+---
+
+# TESTING.md
+-- good.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md
+-- testing.txt --
+testing
+-- spec.txt --
+spec

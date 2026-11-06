@@ -1,0 +1,43 @@
+# AC57: lyceum test unit records subset: unit, and the run never clears a gate
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/unit.sh unit.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum test unit
+stdout '^unit.sh ran$'
+! stdout '^t.sh ran'
+stdout '^Passed: sh ./unit.sh exited 0 after \S+$'
+exec sh -c 'cat .lyceum/runs/*.json'
+stdout '^\{"ts":"[^"]+","command":"sh ./unit.sh","subset":"unit","commit":"[0-9a-f]{7,}","dirty":false,"exit":0,'
+! grep gate-clear lyceum/events.jsonl
+
+exec lyceum test unit --json
+jsonobject
+stdout '"data":\{"ts":"[^"]+","command":"sh ./unit.sh","subset":"unit",'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- unit.sh --
+echo unit.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  unit: sh ./unit.sh
+---
+
+# TESTING.md

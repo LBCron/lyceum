@@ -1,0 +1,113 @@
+# AC107: Given a bug at repro with no repro test, when the owner runs approve cause --no-repro "visual only", then repro is skipped, the event records the reason, the bug moves to diagnose, and verify (full-suite pass) and the final approve cause are still required before close
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/label-broken.sh src/label.sh
+cp $WORK/label_test.sh src/label_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+exec lyceum add bug 'Label typo'
+grep '^gate: repro$' lyceum/plan/6ae678-label-typo.md
+grep '^status: planned$' lyceum/plan/6ae678-label-typo.md
+
+# --no-repro needs a reason, and goes with approve cause only.
+ttyrun $WORK/repro.txt 'lyceum approve cause --no-repro "  "'
+stdout '^exit=2$'
+stderr '^Can''t approve cause --no-repro: --no-repro needs a reason: why this bug can''t have a repro test$'
+stderr '^Next: run "lyceum approve cause --no-repro ''<reason>''" yourself in a terminal, while the bug is at repro$'
+ttyrun $WORK/repro.txt 'lyceum approve tests --no-repro "visual only"'
+stdout '^exit=2$'
+stderr '^Can''t approve tests: --no-repro goes with approve cause only$'
+exec sh -c 'grep -c "\"type\":\"approve\"" lyceum/events.jsonl'
+stdout '^1$'
+
+# The skip is confirmed by typing cause, not repro.
+ttyrun $WORK/repro.txt 'lyceum approve cause --no-repro "visual only"'
+stdout '^exit=2$'
+stderr 'Type the gate name to approve \(cause\): '
+stderr 'Can''t approve cause --no-repro: confirmation did not match; nothing was approved$'
+stderr '^Next: run "lyceum approve cause --no-repro ''<reason>''" again and type cause exactly$'
+grep '^gate: repro$' lyceum/plan/6ae678-label-typo.md
+exec sh -c 'grep -c "\"type\":\"approve\"" lyceum/events.jsonl'
+stdout '^1$'
+
+# The owner skips repro: the event records no_repro and the reason, the bug moves to diagnose and in-progress.
+ttyrun $WORK/cause.txt 'lyceum approve cause --no-repro "visual only"'
+stdout '^exit=0$'
+stderr '^Gate: repro$'
+stderr '^Skipping repro with no repro test \(--no-repro\). Reason: visual only$'
+stderr 'Type the gate name to approve \(cause\): '
+grep 'Approved repro for 6ae678-label-typo' $WORK/tty.out
+grep '"type":"approve","unit":"6ae678-label-typo",.*"counts":true,"gate":"repro","hashes":\{\},"no_repro":true,.*"reason":"visual only","status":"in-progress","via":"terminal"\}$' lyceum/events.jsonl
+grep '^gate: diagnose$' lyceum/plan/6ae678-label-typo.md
+grep '^status: in-progress$' lyceum/plan/6ae678-label-typo.md
+grep '^  - gate: repro$' lyceum/plan/6ae678-label-typo.md
+exec git log -1 --format=%s
+stdout '^lyceum: approve repro 6ae678-label-typo$'
+exec git status --porcelain
+! stdout .
+
+# --no-repro works only at repro.
+ttyrun $WORK/repro.txt 'lyceum approve cause --no-repro "visual only"'
+stdout '^exit=2$'
+stderr '^Can''t approve cause --no-repro: unit 6ae678-label-typo is a bug at gate diagnose; --no-repro skips only a bug''s repro gate$'
+
+# verify is still required: a failing suite does not clear it.
+cp $WORK/label-fixed-wrong.sh src/label.sh
+exec git commit -q -am 'a wrong fix'
+! exec lyceum test
+grep '^gate: diagnose$' lyceum/plan/6ae678-label-typo.md
+
+# The fix: a passing gate-evidence run clears verify with no repro fingerprint, and the bug is at cause.
+cp $WORK/label-fixed.sh src/label.sh
+exec git commit -q -am 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-label-typo$'
+stdout '^Gate: cause$'
+grep '^status: implemented$' lyceum/plan/6ae678-label-typo.md
+
+# The final approve cause is still required; its summary gives the reason in place of a repro test.
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=0$'
+stderr '^  src/label.sh sha256:[0-9a-f]{64}$'
+stderr '^No repro test: repro was skipped with --no-repro. Reason: visual only$'
+stderr '^\+label\(\) \{ echo Login; \}$'
+grep 'Approved cause for 6ae678-label-typo' $WORK/tty.out
+grep '^gate: close$' lyceum/plan/6ae678-label-typo.md
+
+# The log replays the skip, the clear and the cause approval: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- repro.txt --
+repro
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/label_test.sh
+-- label-broken.sh --
+label() { echo Lgoin; }
+-- label-fixed-wrong.sh --
+label() { echo Lgin; }
+-- label-fixed.sh --
+label() { echo Login; }
+-- label_test.sh --
+# TestLabelShown
+. ./src/label.sh
+if [ -n "$(label)" ] && [ "$(label)" != Lgin ]; then echo ok; else echo "--- FAIL: TestLabelShown"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/label_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

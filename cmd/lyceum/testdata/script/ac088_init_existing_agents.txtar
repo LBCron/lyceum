@@ -1,0 +1,41 @@
+# AC88: given an existing AGENTS.md, when init runs, then the original content is preserved byte-for-byte and the Lyceum section is appended between markers only after the user confirms
+cd $REPO
+cp $WORK/agents.md AGENTS.md
+
+# Declined: AGENTS.md is left byte for byte.
+stdin $WORK/no.txt
+exec lyceum init
+stderr '^<!-- lyceum:start -->$'
+stderr 'Append this Lyceum section to AGENTS.md\? \[y/N\] '
+stdout '^Skipped the Lyceum section in AGENTS.md; run "lyceum init" again to add it$'
+cmp AGENTS.md $WORK/agents.md
+
+# No answer at all (closed stdin) is a no too.
+exec lyceum init
+cmp AGENTS.md $WORK/agents.md
+
+# Confirmed: the original bytes, then a blank line, then the section between markers, exactly as embedded.
+stdin $WORK/yes.txt
+exec lyceum init
+stdout '^Updated AGENTS.md$'
+exec sh -c '{ cat $WORK/agents.md; echo; cat $TEMPLATES/agents.md; } > $WORK/want.md'
+cmp AGENTS.md $WORK/want.md
+
+# An AGENTS.md without a final newline gets one before the section; the original bytes stay a prefix.
+exec git init -q -b main $WORK/nl
+exec git -C $WORK/nl config user.email owner@example.com
+cd $WORK/nl
+exec sh -c 'printf "# Mine" > AGENTS.md'
+stdin $WORK/yes.txt
+exec lyceum init
+exec sh -c '{ printf "# Mine\n\n"; cat $TEMPLATES/agents.md; } > $WORK/want-nl.md'
+cmp AGENTS.md $WORK/want-nl.md
+
+-- agents.md --
+# My project
+
+Build with make.
+-- no.txt --
+n
+-- yes.txt --
+y

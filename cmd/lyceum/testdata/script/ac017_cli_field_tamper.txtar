@@ -1,0 +1,182 @@
+# AC17: given a plan, when any CLI-owned frontmatter field differs from what the event log implies, then check reports a bypass naming the field
+# check replays the unit's add event, approve events and gate-clear events. Each tamper below is undone before the next.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'lyceum init'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add feat 'CSV export'
+cp lyceum/plan/6ae678-csv-export.md $WORK/added.md
+cp lyceum/events.jsonl $WORK/events-added.jsonl
+
+# Untampered: no finding.
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-spec.txt
+
+# gate: hand-edited to build and committed. Locally the finding is printed and recorded as a bypass event.
+exec sh -c 'sed "s/^gate: spec$/gate: build/" $WORK/added.md > lyceum/plan/6ae678-csv-export.md'
+exec git commit -q -am 'hand edit'
+exec lyceum check --pre-commit
+stdout '^fail: cli-fields: plan field gate is build, but the event log implies spec$'
+stdout '^  to fix: set gate: back to spec in lyceum/plan/6ae678-csv-export.md; only the CLI writes it$'
+stdout '^Wrote 1 bypass event to lyceum/events.jsonl$'
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]{7,}","check":"cli-fields","message":"plan field gate is build, but the event log implies spec"\}$' lyceum/events.jsonl
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field gate is build, but the event log implies spec$'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"findings":\[\{"check":"cli-fields","severity":"fail","message":"plan field gate is build, but the event log implies spec","unit":"6ae678-csv-export","path":"lyceum/plan/6ae678-csv-export.md","field":"gate","next":"set gate: back to spec in lyceum/plan/6ae678-csv-export.md; only the CLI writes it"\}\]\}$'
+cp $WORK/events-added.jsonl lyceum/events.jsonl
+
+# status: hand-edited to implemented.
+exec sh -c 'sed "s/^status: planned$/status: implemented/" $WORK/added.md > lyceum/plan/6ae678-csv-export.md'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: cli-fields: plan field status is implemented, but the event log implies planned$'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"field":"status"'
+
+# type: hand-edited to bug, a type with no spec gate: still a finding, not an error, locally too.
+exec sh -c 'sed "s/^type: feat$/type: bug/" $WORK/added.md > lyceum/plan/6ae678-csv-export.md'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field type is bug, but the event log implies feat$'
+exec lyceum check
+stdout '^fail: cli-fields: plan field type is bug, but the event log implies feat$'
+stdout '^Unit: 6ae678-csv-export$'
+! stderr .
+cp $WORK/events-added.jsonl lyceum/events.jsonl
+
+# branch: hand-edited away from this branch: the add event still finds the unit here.
+exec sh -c 'sed "s|^branch: feat/6ae678-csv-export$|branch: feat/elsewhere|" $WORK/added.md > lyceum/plan/6ae678-csv-export.md'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field branch is feat/elsewhere, but the event log implies feat/6ae678-csv-export$'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"unit":"6ae678-csv-export",.*"field":"branch"'
+
+# The plan gone: the branch claimed by the add event is a finding, never "no unit".
+rm lyceum/plan/6ae678-csv-export.md
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: cli-fields: the add event of unit 6ae678-csv-export puts it on branch feat/6ae678-csv-export, but no plan on this branch is unit 6ae678-csv-export$'
+
+# Restored, then approved: first by someone who is not the owner (counts false,
+# the gate stays), then by the owner. Replaying both, the plan matches.
+cp $WORK/added.md lyceum/plan/6ae678-csv-export.md
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-spec.txt
+exec git config user.email other@example.com
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+grep '^    counts: false$' lyceum/plan/6ae678-csv-export.md
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-spec.txt
+exec git config user.email owner@example.com
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-build.txt
+cp lyceum/plan/6ae678-csv-export.md $WORK/approved.md
+
+# approvals: a fake entry added by hand.
+exec sh -c 'awk ''/^approvals:$/ { print; while ((getline l < "'$WORK'/fake.txt") > 0) print l; next } { print }'' $WORK/approved.md > lyceum/plan/6ae678-csv-export.md'
+grep '^    commit: abc1234$' lyceum/plan/6ae678-csv-export.md
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field approvals has 3 entries, but the event log implies 2$'
+stderr '^Next: restore approvals: in lyceum/plan/6ae678-csv-export.md to mirror the approve events in lyceum/events.jsonl'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"field":"approvals"'
+
+# Untampered again: no finding.
+cp $WORK/approved.md lyceum/plan/6ae678-csv-export.md
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-build.txt
+
+# Cleared by lyceum test: the gate-clear event replays the plan to close and implemented, so no finding.
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-close.txt
+cp lyceum/plan/6ae678-csv-export.md $WORK/cleared.md
+
+# status: hand-edited past the clear, with no event: still a finding.
+exec sh -c 'sed "s/^status: implemented$/status: closed/" $WORK/cleared.md > lyceum/plan/6ae678-csv-export.md'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: cli-fields: plan field status is closed, but the event log implies implemented$'
+cp $WORK/cleared.md lyceum/plan/6ae678-csv-export.md
+exec lyceum check --ci
+cmp stdout $WORK/want-clean-close.txt
+
+# A plan no add event records is a finding on id.
+exec git switch -q -c feat/aaaaaa-by-hand main
+mkdir lyceum/plan
+cp $WORK/by-hand.md lyceum/plan/aaaaaa-by-hand.md
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: cli-fields: plan field id is aaaaaa-by-hand, but no add event records this unit$'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"unit":"aaaaaa-by-hand",.*"field":"id"'
+
+-- spec.txt --
+spec
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- fake.txt --
+  - gate: build
+    hashes: {}
+    commit: abc1234
+    by: owner@example.com
+    at: 2026-01-01T00:00:00Z
+-- by-hand.md --
+---
+id: aaaaaa-by-hand
+type: feat
+title: By hand
+branch: feat/aaaaaa-by-hand
+status: planned
+gate: spec
+approvals: []
+---
+
+## What and why
+-- want-clean-spec.txt --
+No findings
+Unit: 6ae678-csv-export
+Gate: spec
+Next: run "lyceum approve spec" yourself in a terminal
+-- want-clean-build.txt --
+No findings
+Unit: 6ae678-csv-export
+Gate: build
+Next: finish the build work described in the plan
+-- want-clean-close.txt --
+No findings
+Unit: 6ae678-csv-export
+Gate: close
+Next: run "lyceum close"

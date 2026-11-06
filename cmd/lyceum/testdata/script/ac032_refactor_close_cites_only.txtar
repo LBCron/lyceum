@@ -1,0 +1,106 @@
+# AC32: given close on a refactor, when the area file's diff includes anything other than cites: frontmatter, then close refuses
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+exec lyceum plan --new-area orders
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A refactor from intent to close: intent, baseline, plan, the build, verify.
+exec lyceum refactor 'Tidy'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for 6ae678-tidy$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/calc-tidy.sh src/calc.sh
+exec git commit -q -am 'tidy add'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-tidy$'
+
+# The area file's text changed: close refuses and names the file.
+cp $WORK/orders-edited.md lyceum/spec/orders.md
+exec git commit -q -am 'spec text'
+! exec lyceum close
+stderr '^Can''t close 6ae678-tidy: a refactor changes the spec only in cites: frontmatter, and the branch changes more in: lyceum/spec/orders.md$'
+stderr '^Next: take those spec changes off this branch, keeping only cites:, then run "lyceum close" again$'
+! grep '"type":"close"' lyceum/events.jsonl
+
+# A cites: change alongside other frontmatter is refused too.
+cp $WORK/orders-cites-status.md lyceum/spec/orders.md
+exec git commit -q -am 'cites and status'
+! exec lyceum close
+stderr 'and the branch changes more in: lyceum/spec/orders.md$'
+
+# Only cites: frontmatter added: close goes through.
+cp $WORK/orders-cites.md lyceum/spec/orders.md
+exec git commit -q -am 'cites only'
+exec lyceum close
+stdout '^Closed 6ae678-tidy$'
+grep '^status: closed$' lyceum/plan/6ae678-tidy.md
+grep -count=1 '"type":"close","unit":"6ae678-tidy"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-tidy.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- orders.md --
+# orders
+
+Orders are added with add.
+-- orders-edited.md --
+# orders
+
+Orders are added with add, tidily.
+-- orders-cites-status.md --
+---
+status: as-built
+cites:
+  - src/calc.sh#add
+---
+# orders
+
+Orders are added with add.
+-- orders-cites.md --
+---
+cites:
+  - src/calc.sh#add
+---
+# orders
+
+Orders are added with add.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

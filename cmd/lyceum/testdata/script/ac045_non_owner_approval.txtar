@@ -1,0 +1,83 @@
+# AC45: an approval by an email that is not owner writes the event with counts false and the gate does not clear
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+grep '^owner: owner@example.com$' lyceum/config.yaml
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+exec git rev-parse --short HEAD
+cp stdout $WORK/approved-at.txt
+
+# Someone else approves: the event is written with counts false, the refusal names the owner.
+exec git config user.email other@example.com
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=2$'
+# The refusal follows the prompt on its line: the typed Enter is echoed to the terminal, not to stderr.
+stderr '^Type the gate name to approve \(intent\): Can''t approve intent: your approval was recorded, but it does not count: you are other@example.com, and the configured owner is owner@example.com; gate intent is still open$'
+stderr '^Next: the owner, owner@example.com, runs "lyceum approve intent" in their own terminal$'
+! grep 'Approved' $WORK/tty.out
+grep -count=1 '"type":"approve"' lyceum/events.jsonl
+grep '"type":"approve","unit":"aaaaaa-tidy","actor":"other@example.com",.*"by":"other@example.com","counts":false,"gate":"intent"' lyceum/events.jsonl
+
+# The plan mirrors it with counts: false, and its gate is still intent. Both are committed.
+# A short hash of only digits reads as a number in YAML, so it is written quoted.
+exec sh -c 'c=$(cat $WORK/approved-at.txt); case $c in *[!0-9]*) ;; *) c="\"$c\"" ;; esac; sed "s/@COMMIT@/$c/" $WORK/want-plan.md'
+cp stdout $WORK/want-plan-commit.md
+cmp lyceum/plan/aaaaaa-tidy.md $WORK/want-plan-commit.md
+exec git status --porcelain
+! stdout .
+exec git show --format= --name-only HEAD
+cmp stdout $WORK/want-committed.txt
+
+# The owner approves, under the same email in other case: it counts and the gate advances.
+exec git config user.email Owner@Example.COM
+ttyrun $WORK/intent.txt 'lyceum approve intent'
+stdout '^exit=0$'
+grep '^Approved intent for aaaaaa-tidy' $WORK/tty.out
+grep '^Gate: baseline' $WORK/tty.out
+grep -count=2 '"type":"approve"' lyceum/events.jsonl
+grep '"by":"Owner@Example.COM","counts":true,"gate":"intent"' lyceum/events.jsonl
+grep '^gate: baseline$' lyceum/plan/aaaaaa-tidy.md
+grep -count=1 '^    counts: false$' lyceum/plan/aaaaaa-tidy.md
+
+-- intent.txt --
+intent
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: intent
+approvals: []
+---
+
+## What and why
+-- want-plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: intent
+approvals:
+  - gate: intent
+    hashes:
+      lyceum/plan/aaaaaa-tidy.md: sha256:cbcc981100e27bf4e16804e43c7c407885888cc5ec225ceff14e613374055dc7
+    commit: @COMMIT@
+    by: other@example.com
+    at: 2026-01-01T00:00:00Z
+    counts: false
+---
+
+## What and why
+-- want-committed.txt --
+lyceum/events.jsonl
+lyceum/plan/aaaaaa-tidy.md

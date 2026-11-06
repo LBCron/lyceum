@@ -1,0 +1,65 @@
+# AC123: given approvals.harness_prompt: deny, then the hook denies lyceum approve for every harness, and check --ci fails on a counting approval event with via: harness-prompt for the branch's unit, and passes when such an event belongs only to another unit
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# With allow, the default, the route gives a counting harness-prompt approval, and check --ci passes.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"ask"'
+exec sh -c 'CLAUDECODE=1 lyceum approve spec'
+stdout '^Approved spec for 6ae678-csv-export$'
+grep '"counts":true,"gate":"spec",.*"via":"harness-prompt"' lyceum/events.jsonl
+exec lyceum check --ci
+! stdout 'harness-prompt'
+
+# deny: every harness's hook denies, and no grant is written. The unit is reset to spec by hand.
+exec sh -c 'sed "s/harness_prompt: allow/harness_prompt: deny/" lyceum/config.yaml > c.yaml && mv c.yaml lyceum/config.yaml'
+grep '^  harness_prompt: deny$' lyceum/config.yaml
+exec sh -c 'sed "s/^gate: build$/gate: spec/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: '
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '"permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: '
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '"permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: '
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: '
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: '
+! exists .lyceum/approve-grant.json
+exec git checkout -q -- lyceum/plan/6ae678-csv-export.md
+
+# check --ci fails on the counting harness-prompt approval, naming it.
+exec git add -A
+exec git commit -q -m 'harness_prompt: deny'
+! exec lyceum check --ci
+stderr 'harness-prompt'
+stderr 'the spec approval of 6ae678-csv-export was given through the claude harness prompt, and approvals\.harness_prompt is deny'
+stderr 'set approvals\.harness_prompt: allow in lyceum/config\.yaml'
+
+# An event for another unit does not fail: 6ae678-csv-export's branch is merged to main, so the next unit's
+# branch holds its harness-prompt approval in the log, and check --ci there passes.
+exec git switch -q main
+exec git merge -q --ff-only feat/6ae678-csv-export
+exec lyceum add feat 'PDF export'
+stdout '^Gate: spec$'
+! stdout 6ae678-csv-export
+grep '"unit":"6ae678-csv-export",.*"via":"harness-prompt"' lyceum/events.jsonl
+exec lyceum check --ci
+! stdout 'harness-prompt'
+! stderr 'harness-prompt'

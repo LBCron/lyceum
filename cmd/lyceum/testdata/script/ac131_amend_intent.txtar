@@ -1,0 +1,142 @@
+# AC131: given a refactor at build, when amend --intent "<reason>" runs, then intent and every later approval are
+# invalidated and the gate is intent; without --intent, intent still counts and the gate is plan.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# --intent is only for a refactor.
+exec lyceum add feat 'CSV export'
+! exec lyceum amend --intent 'new intent'
+stderr '^Can''t amend [0-9a-f]{6}-csv-export: --intent is only for a refactor, whose intent is approved apart from its plan; [0-9a-f]{6}-csv-export is a feat$'
+stderr '^Next: run lyceum amend "<reason>"$'
+! grep '"type":"amend"' lyceum/events.jsonl
+
+# A refactor at build: intent, baseline and plan cleared, and the build committed code.
+exec git switch -q main
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'add refactor'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for aaaaaa-tidy$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+cp $WORK/calc-tidy.sh src/calc.sh
+exec git commit -q -am 'tidy add'
+
+# Without --intent: plan is invalidated, intent still counts, and the gate is plan.
+exec lyceum amend 'split sub out too'
+stdout '^Invalidated: plan$'
+stdout '^Gate: plan$'
+grep '^gate: plan$' lyceum/plan/aaaaaa-tidy.md
+grep -count=1 '"type":"amend","unit":"aaaaaa-tidy",.*"gate":"plan","invalidated":\["plan"\],"reason":"split sub out too","status":"planned"\}$' lyceum/events.jsonl
+exec lyceum check --ci
+stdout '^No findings$'
+# intent is still relied on: changing what it approved is an integrity finding.
+exec sh -c 'sed "s/^goal: readability$/goal: simplicity/" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+exec git commit -q -am 'goal'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: approval-integrity: the intent approval no longer matches lyceum/plan/aaaaaa-tidy\.md: it changed after it was approved$'
+exec sh -c 'sed "s/^goal: simplicity$/goal: readability/" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+exec git commit -q -am 'goal back'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+
+# With --intent: intent and every later approval are invalidated, and the gate is intent.
+exec lyceum amend --intent 'the goal is speed, not readability'
+stdout '^Invalidated: intent, plan$'
+stdout '^Back at intent, status planned; code changed from now on fails check until the owner approves plan again$'
+stdout '^Gate: intent$'
+stdout '^Next: change the plan for the amend in lyceum/plan/aaaaaa-tidy\.md, then run "lyceum approve intent" yourself in a terminal$'
+grep '^gate: intent$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: planned$' lyceum/plan/aaaaaa-tidy.md
+grep -count=1 '"type":"amend","unit":"aaaaaa-tidy",.*"gate":"intent","invalidated":\["intent","plan"\],"reason":"the goal is speed, not readability","status":"planned"\}$' lyceum/events.jsonl
+exec lyceum check --ci
+stdout '^No findings$'
+# The invalidated intent no longer holds the plan: the agent rewrites the intent.
+exec sh -c 'sed "s/^goal: readability$/goal: simplicity/" lyceum/plan/aaaaaa-tidy.md > plan.tmp && mv plan.tmp lyceum/plan/aaaaaa-tidy.md'
+exec git commit -q -am 'new goal'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# The owner approves intent again: the code built before the amend is still not new, until plan is approved again.
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+stdout '^No findings$'
+cp $WORK/calc-more.sh src/calc.sh
+exec git commit -q -am 'more build'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: gate-before-code: the branch changes code since the amend, before the plan gate is approved again: src/calc\.sh$'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-tidy.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc-more.sh --
+add() {
+	echo $(( $1 + $2 ))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: intent
+approvals: []
+goal: readability
+files: [src/calc.sh]
+---
+
+## What and why
+
+Make add easier to read.
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"intent","status":"planned","unit_type":"refactor"}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

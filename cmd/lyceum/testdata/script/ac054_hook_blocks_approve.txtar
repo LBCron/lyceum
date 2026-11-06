@@ -1,0 +1,149 @@
+# AC54: given the hook installed, when the agent runs a shell command containing lyceum approve, then it is blocked, unless the harness-prompt route applies
+# Each harness's captured shell payload, as captured and with its command replaced. Other shell calls are allowed.
+# The unit is at spec, so for Claude Code, OpenCode and Pi the captured `lyceum approve spec` takes the route and gets
+# "ask" (AC122 covers it); bare approve, or a gate that is not pending, is still blocked.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# Claude Code: the captured shell call, echo lyceum approve spec: the harness-prompt route applies.
+payload claude/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, [^"]*"\}\}$'
+! stderr .
+
+# Claude Code: npx lyceum approve.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum approve'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Claude Code: ./dist/lyceum --json approve plan: plan is not the unit's pending gate.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=./dist/lyceum --json approve plan'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Claude Code: git status.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=git status'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Codex: the captured shell call, echo lyceum approve spec.
+payload codex/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Codex: npx lyceum approve.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum approve'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Codex: ./dist/lyceum --json approve spec.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=./dist/lyceum --json approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Codex: git status.
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=git status'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+! stdout .
+! stderr .
+
+# Command Code: the captured shell call, echo lyceum approve spec.
+payload commandcode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Command Code: npx lyceum approve.
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum approve'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Command Code: ./dist/lyceum --json approve spec.
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=./dist/lyceum --json approve spec'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}\}$'
+! stderr .
+
+# Command Code: git status.
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=git status'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+! stdout .
+! stderr .
+
+# OpenCode: the captured shell call, echo lyceum approve spec: the harness-prompt route applies.
+payload opencode/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, [^"]*"\}$'
+! stderr .
+
+# OpenCode: npx lyceum approve.
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum approve'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}$'
+! stderr .
+
+# OpenCode: ./dist/lyceum --json approve plan: plan is not the unit's pending gate.
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=./dist/lyceum --json approve plan'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}$'
+! stderr .
+
+# OpenCode: git status.
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=git status'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+
+# Pi: the captured shell call, echo lyceum approve spec: the harness-prompt route applies.
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"ask","reason":"Lyceum owner approval of gate spec of unit 6ae678-csv-export, [^"]*"\}$'
+! stderr .
+
+# Pi: npx lyceum approve.
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum approve'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}$'
+! stderr .
+
+# Pi: ./dist/lyceum --json approve plan: plan is not the unit's pending gate.
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=./dist/lyceum --json approve plan'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: \\"lyceum approve\\" is for the owner, typed in their own terminal\. Next: stop and ask the owner to run it themselves\. Do not retry this command or work around it\."\}$'
+! stderr .
+
+# Pi: git status.
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=git status'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .

@@ -1,0 +1,87 @@
+# AC161: given doctor --json outside a git repo, in a git repo without Lyceum, and in a Lyceum repo, then state is no-repo, not-set-up and set-up respectively, and the second has a finding whose next step is lyceum init
+mkdir $WORK/plain
+cd $WORK/plain
+exec lyceum doctor --json
+jsonobject
+stdout '"state":"no-repo"'
+stdout '"findings":\[\]'
+exec lyceum doctor
+stdout '^State: no-repo$'
+stdout '^No findings$'
+
+cd $REPO
+exec lyceum doctor --json
+jsonobject
+stdout '"state":"not-set-up"'
+stdout '"check":"setup","message":"Lyceum is not set up in this repo","next":"run \\"lyceum init\\""'
+exec lyceum doctor
+stdout '^State: not-set-up$'
+stdout '^Next: run "lyceum init"$'
+! exists lyceum
+
+# An interactive run offers to start init, and declining changes nothing.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+ttyin -stdin $WORK/no.txt
+exec sh -c 'lyceum doctor >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+stderr 'Run "lyceum init" now\? \[y/N\] '
+! exists lyceum
+ttyin -stdin $WORK/yes.txt
+exec sh -c 'lyceum doctor >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exists lyceum/config.yaml
+
+# Set up: with the pre-commit hook init installed, there are no findings.
+exec lyceum doctor --json
+jsonobject
+stdout '"state":"set-up"'
+stdout '"findings":\[\]'
+
+# Each kind of drift in the integration is a finding with a next step.
+rm .git/hooks/pre-commit
+cp $WORK/bad-testing.md TESTING.md
+mkdir .codex
+exec lyceum doctor
+stdout '^pre-commit: the pre-commit hook does not run lyceum check$'
+stdout '^testing: TESTING.md'
+stdout '^hook: Codex has no Lyceum hook: \.codex/hooks\.json$'
+stdout '^  to fix: run "lyceum init --harness codex"$'
+
+# A config that doesn't parse is a finding too, and doctor still reports the rest.
+cp lyceum/config.yaml $WORK/config.keep
+cp $WORK/bad-config.yaml lyceum/config.yaml
+exec lyceum doctor --json
+jsonobject
+stdout '"state":"set-up"'
+stdout '"check":"config"'
+stdout '"check":"pre-commit"'
+cp $WORK/config.keep lyceum/config.yaml
+
+# doctor writes nothing.
+exec git status --porcelain
+stdout 'TESTING.md'
+! stdout 'events'
+
+# With a workflow: fine while the Action resolves, a finding while it doesn't (T19).
+rm TESTING.md
+mkdir .github .github/workflows
+cp $TEMPLATES/workflow.yml .github/workflows/lyceum.yml
+exec lyceum doctor
+! stdout '^ci: '
+env LYCEUM_ACTION_PUBLISHED=0
+exec lyceum doctor
+stdout '^ci: \.github/workflows/lyceum\.yml uses a CI Action this build can''t resolve: it is not published yet$'
+stdout '^  to fix: remove \.github/workflows/lyceum\.yml until the Action is published$'
+
+-- no.txt --
+n
+-- yes.txt --
+y
+
+
+-- bad-config.yaml --
+: not: [yaml
+-- bad-testing.md --
+---
+lyceum: 2
+---

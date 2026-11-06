@@ -1,0 +1,17 @@
+# AC158: given a greenfield init committed and no project approval, when status runs, then Next: names the project interview and lyceum approve project, not lyceum add
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+exec lyceum status
+stdout '^Next: finish the project interview with your agent''s lyceum-init skill, then run "lyceum approve project" yourself in a terminal$'
+! stdout 'lyceum add'
+stdout '^  project: pending, the project interview has not finished$'
+# Nothing can be approved yet: approve project refuses until the areas exist (AC38).
+stdout '^Pending approvals: none$'
+
+# A unit in flight keeps its own next step.
+exec lyceum add doc 'Guide'
+exec lyceum status
+stdout '^Next: finish the draft work described in the plan$'

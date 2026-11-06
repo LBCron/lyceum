@@ -1,0 +1,48 @@
+# AC135: given audit on a Go project with govulncheck missing, then it refuses and names how to install it, and no record is written
+cd $REPO
+exec lyceum init
+cp $WORK/go.mod go.mod
+exec git add -A
+exec git commit -q -m 'lyceum init and go project'
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+
+! exec lyceum audit
+! stdout .
+stderr '^Can''t audit: audit found go.mod, but govulncheck is not installed \(govulncheck is not on PATH\)$'
+stderr '^Next: ask the user to install it, or to allow you to: go install golang.org/x/vuln/cmd/govulncheck@latest$'
+stderr '^Next: then run "lyceum audit" again$'
+! exists lyceum/audit
+exec git rev-parse HEAD
+cmp stdout $WORK/head.txt
+exec git status --porcelain
+! stdout .
+! exec lyceum audit --json
+jsonobject
+stdout '"reason":"audit found go.mod, but govulncheck is not installed'
+
+# With npm installed and a package.json too, nothing runs before the refusal.
+cp $WORK/package.json package.json
+mkdir $WORK/bin
+cp $WORK/npm $WORK/bin/npm
+chmod 755 $WORK/bin/npm
+env PATH=$WORK/bin:$PATH
+! exec lyceum audit
+stderr 'govulncheck is not installed'
+! exists $WORK/npm-ran
+! exists lyceum/audit
+
+# No manifest at all: nothing to audit.
+rm go.mod package.json
+! exec lyceum audit
+stderr '^Can''t audit: no manifest audit knows is at the repo root \(package.json, go.mod, requirements.txt, pyproject.toml, Cargo.toml, composer.json, Gemfile\), so there is nothing to audit$'
+
+-- go.mod --
+module example.com/app
+
+go 1.22
+-- package.json --
+{"name":"app"}
+-- npm --
+#!/bin/sh
+touch "$WORK/npm-ran"

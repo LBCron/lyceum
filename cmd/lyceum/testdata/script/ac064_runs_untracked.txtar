@@ -1,0 +1,32 @@
+# AC64: 30 runs leave 30 run records under .lyceum/runs/, none of them tracked by git
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+
+# Each run gets its own seed, so each draws a different name.
+exec sh -c 'i=1; while [ $i -le 30 ]; do LYCEUM_SEED=$i lyceum test >/dev/null || exit 1; i=$((i+1)); done'
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+stdout '^ *30$'
+exec sh -c 'ls .lyceum/runs/*.out | wc -l'
+stdout '^ *30$'
+exec git status --porcelain --untracked-files=all --ignored=no
+! stdout .
+exec git ls-files .lyceum
+! stdout .
+
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

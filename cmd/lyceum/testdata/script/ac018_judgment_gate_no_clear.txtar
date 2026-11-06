@@ -1,0 +1,42 @@
+# AC18: given a feat at gate spec, when lyceum test passes, then the gate does not change (judgment gates never clear on runs)
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/existing_test.sh existing_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+exec git rev-parse HEAD
+cp stdout $WORK/before.txt
+
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Gate: spec$'
+stdout '^Next: run "lyceum approve spec" yourself in a terminal$'
+grep '^gate: spec$' lyceum/plan/6ae678-csv-export.md
+grep '^status: planned$' lyceum/plan/6ae678-csv-export.md
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+exec git rev-parse HEAD
+cmp stdout $WORK/before.txt
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- existing_test.sh --
+# an existing test

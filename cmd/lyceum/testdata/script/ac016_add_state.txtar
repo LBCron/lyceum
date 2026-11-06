@@ -1,0 +1,59 @@
+# AC16: after add feat the plan has status planned, gate spec, and an add event is in events.jsonl
+# The add event records the unit's type, branch, gate and status, so check can rebuild the plan's CLI-owned fields.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git rev-parse --short HEAD
+cp stdout $WORK/base.txt
+
+exec lyceum add feat 'CSV export'
+stdout '^Unit: 6ae678-csv-export$'
+cmp lyceum/plan/6ae678-csv-export.md $WORK/want-plan.md
+
+# One add event, written before the commit, so its commit is the base commit.
+grep -count=1 '^.' lyceum/events.jsonl
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]+","branch":"feat/6ae678-csv-export","gate":"spec","status":"planned","unit_type":"feat"\}$' lyceum/events.jsonl
+exec git show HEAD:lyceum/events.jsonl
+cmp stdout lyceum/events.jsonl
+exec git log -1 --format=%h HEAD~1
+cmp stdout $WORK/base.txt
+
+# Each type starts at the first gate of its list. Doc and test have no
+# code-opening gate, so they start in-progress, and the add event says so.
+exec git switch -q main
+exec lyceum add bug 'Broken export'
+stdout '^Gate: repro$'
+grep '^status: planned$' lyceum/plan/3f4fbd-broken-export.md
+grep '"type":"add","unit":"3f4fbd-broken-export",.*"branch":"fix/3f4fbd-broken-export","gate":"repro","status":"planned","unit_type":"bug"\}$' lyceum/events.jsonl
+exec git switch -q main
+exec lyceum add doc 'Guide'
+stdout '^Gate: draft$'
+grep '^status: in-progress$' lyceum/plan/e91b6e-guide.md
+grep '"type":"add","unit":"e91b6e-guide",.*"branch":"docs/e91b6e-guide","gate":"draft","status":"in-progress","unit_type":"doc"\}$' lyceum/events.jsonl
+exec git switch -q main
+exec lyceum add test 'Empty export'
+stdout '^Gate: write$'
+grep '^status: in-progress$' lyceum/plan/b88b73-empty-export.md
+grep '"type":"add","unit":"b88b73-empty-export",.*"branch":"test/b88b73-empty-export","gate":"write","status":"in-progress","unit_type":"test"\}$' lyceum/events.jsonl
+
+-- want-plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+approvals: []
+---
+
+## What and why
+
+## Spec delta
+
+## Steps
+
+## Progress
+
+## Log

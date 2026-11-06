@@ -1,0 +1,89 @@
+# AC144: given approve project covering spec/orders.md and a feat whose approve spec hashed an edited spec/orders.md, when check runs, then no approval-integrity finding names orders.md and no bypass event is written
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A feat edits the area file and names it; before approve spec the project approval still covers it.
+exec lyceum add feat 'CSV export'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+cp $WORK/orders2.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'spec delta'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'the project approval no longer matches lyceum/spec/orders.md'
+
+# Its approve spec covers the area file from now on.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+! stdout 'orders.md'
+exec lyceum check --pre-commit
+! stdout 'orders.md'
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec lyceum status
+stdout '^  project: approved at [0-9a-f]{7}$'
+stdout '^Pending approvals: none$'
+
+# Editing it again: one finding, naming the approval now relied on, not one per approval.
+cp $WORK/orders3.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'edit after approval'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr -count=1 'orders.md: it changed'
+stderr 'the spec approval no longer matches lyceum/spec/orders.md'
+! stderr 'the project approval'
+
+# The drift is a pending re-approval status lists, and it writes no bypass event.
+exec lyceum check --pre-commit
+stdout 'the spec approval no longer matches lyceum/spec/orders.md'
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec lyceum status
+stdout '^  spec for 6ae678-csv-export: restore lyceum/spec/orders.md'
+stdout '^  project: changed since approval at [0-9a-f]{7}$'
+
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+-- orders.md --
+# Orders
+-- orders2.md --
+# Orders
+
+Second version.
+-- orders3.md --
+# Orders
+
+Third version.
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+areas: [orders]
+approvals: []
+---
+
+## What and why
+-- project.txt --
+project
+-- spec.txt --
+spec

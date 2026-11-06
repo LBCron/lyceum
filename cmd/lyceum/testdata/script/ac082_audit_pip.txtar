@@ -1,0 +1,61 @@
+# AC82: given audit on a Python project with pip-audit installed, then pip-audit ran against the project (-r requirements.txt, else . for pyproject.toml), never bare, a report exists in lyceum/audit/, and the manifests are unchanged
+cd $REPO
+exec lyceum init
+cp $WORK/requirements.txt requirements.txt
+cp $WORK/pyproject.toml pyproject.toml
+exec git add -A
+exec git commit -q -m 'lyceum init and python project'
+mkdir $WORK/bin
+cp $WORK/pip-audit $WORK/bin/pip-audit
+chmod 755 $WORK/bin/pip-audit
+env PATH=$WORK/bin:$PATH
+sha256file requirements.txt
+cp stdout $WORK/req-before.txt
+sha256file pyproject.toml
+cp stdout $WORK/pyproject-before.txt
+
+# With requirements.txt present, pip-audit reads it, even alongside pyproject.toml.
+exec lyceum audit
+stdout '^Ran: pip-audit -r requirements.txt exited 0$'
+stdout '^Recorded lyceum/audit/2026-01-01-[0-9a-f]{6}.md$'
+cmpenv $WORK/pip-args.txt $WORK/want-req-args.txt
+exec sh -c 'cat lyceum/audit/2026-01-01-*.md'
+stdout '^Manifests: requirements.txt, pyproject.toml$'
+stdout '^Command: `pip-audit -r requirements.txt`$'
+stdout '^No known vulnerabilities found$'
+sha256file requirements.txt
+cmp stdout $WORK/req-before.txt
+sha256file pyproject.toml
+cmp stdout $WORK/pyproject-before.txt
+
+# With only pyproject.toml, pip-audit audits the project directory.
+exec git rm -q requirements.txt
+exec git commit -q -m 'pyproject only'
+exec lyceum audit
+stdout '^Ran: pip-audit \. exited 0$'
+cmpenv $WORK/pip-args.txt $WORK/want-dir-args.txt
+exec sh -c 'cat lyceum/audit/2026-01-01-*.md'
+stdout '^Command: `pip-audit \.`$'
+sha256file pyproject.toml
+cmp stdout $WORK/pyproject-before.txt
+exec git status --porcelain
+! stdout .
+
+-- pip-audit --
+#!/bin/sh
+printf '%s|' "$@" > "$WORK/pip-args.txt"
+echo >> "$WORK/pip-args.txt"
+pwd >> "$WORK/pip-args.txt"
+echo 'No known vulnerabilities found'
+-- want-req-args.txt --
+-r|requirements.txt|
+$REPO
+-- want-dir-args.txt --
+.|
+$REPO
+-- requirements.txt --
+requests==2.19.0
+-- pyproject.toml --
+[project]
+name = "app"
+version = "0.1.0"

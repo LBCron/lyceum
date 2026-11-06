@@ -1,0 +1,133 @@
+# AC38: given init on an empty directory, when the project interview completes and the owner approves project, then at least one lyceum/spec/<area>.md exists and is registered in lyceum/SPEC.md
+# project is repo-level, like testing: it needs no unit and hashes lyceum/SPEC.md and every area file the registry lists.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+
+# Greenfield init hands over to the agent's project interview, then approve project.
+exec lyceum init
+stdout '^Next: commit these files: git add -A && git commit -m "lyceum init", then start your agent''s lyceum-init skill for the project interview, then run "lyceum approve project" yourself in a terminal$'
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git tag init
+
+# No area registered yet: project is not pending, and approving it refuses, naming the registry.
+exec lyceum status
+stdout '^Pending approvals: none$'
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+ttyrun $WORK/project.txt 'lyceum approve project'
+stdout '^exit=2$'
+stderr '^Can''t approve project: no area is registered in the area registry of lyceum/SPEC.md, so there is nothing to approve$'
+stderr '^Next: start your agent''s lyceum-init skill for the project interview, which writes and registers the areas, then run "lyceum approve project" yourself in a terminal$'
+! stderr 'Type the gate name'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# A registered area whose file is missing is refused, naming the file.
+cp $WORK/spec-index.md lyceum/SPEC.md
+ttyrun $WORK/project.txt 'lyceum approve project'
+stdout '^exit=2$'
+stderr '^Can''t approve project: the area registry of lyceum/SPEC.md lists lyceum/spec/orders.md, but it does not exist$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# The interview wrote and registered the areas: status shows project pending.
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+cp $WORK/billing.md lyceum/spec/billing.md
+exec lyceum status
+stdout '^Pending approvals:$'
+stdout '^  project for lyceum/SPEC.md: run "lyceum approve project" yourself in a terminal$'
+stdout '^Next: run "lyceum approve project" yourself in a terminal$'
+exec lyceum status --json
+stdout '"pending":\[\{"gate":"project","unit":"","next":"run \\"lyceum approve project\\" yourself in a terminal"\}\]'
+
+# Approving project hashes lyceum/SPEC.md, which holds the registry the agent wrote, and every registered area file, with no unit.
+sha256file lyceum/SPEC.md
+stdout '^sha256:3ec8b875f3f8ab5cb8d2d574ff63e65f2ca50bc9a66eb97ebbedb1ccce555efc$'
+sha256file lyceum/spec/orders.md
+stdout '^sha256:00d427d86cda4ae7d0683fa95fd7ed3da046d200fe513c6bc1d074850328232d$'
+ttyrun $WORK/project.txt 'lyceum approve project'
+stdout '^exit=0$'
+! stderr '^Unit:'
+stderr '^Gate: project$'
+stderr '^  lyceum/SPEC.md sha256:3ec8b875f3f8ab5cb8d2d574ff63e65f2ca50bc9a66eb97ebbedb1ccce555efc$'
+stderr '^  lyceum/spec/orders.md sha256:00d427d86cda4ae7d0683fa95fd7ed3da046d200fe513c6bc1d074850328232d$'
+stderr '^  lyceum/spec/billing.md sha256:'
+stderr '^First approval of project: no earlier approval to diff against.$'
+grep '^Approved project' $WORK/tty.out
+grep -count=1 '"type":"approve","unit":"",.*"gate":"project","hashes":\{"lyceum/SPEC.md":"sha256:3ec8b875f3f8ab5cb8d2d574ff63e65f2ca50bc9a66eb97ebbedb1ccce555efc","lyceum/spec/billing.md":"sha256:[0-9a-f]{64}","lyceum/spec/orders.md":"sha256:00d427d86cda4ae7d0683fa95fd7ed3da046d200fe513c6bc1d074850328232d"\}' lyceum/events.jsonl
+
+# The approval commit holds the event, lyceum/SPEC.md and every approved area file.
+exec git show --name-only --format=%s HEAD
+stdout '^lyceum: approve project$'
+stdout '^lyceum/events.jsonl$'
+stdout '^lyceum/SPEC.md$'
+stdout '^lyceum/spec/orders.md$'
+stdout '^lyceum/spec/billing.md$'
+
+# AC38's outcome: an area file exists and is registered.
+exists lyceum/spec/orders.md
+grep '^\| orders \| `spec/orders.md` \|' lyceum/SPEC.md
+
+# Once approved, project is no longer pending, and re-running init hands over to add feat.
+exec lyceum status
+stdout '^Pending approvals: none$'
+exec lyceum init
+stdout '^Next: commit these files: git add -A && git commit -m "lyceum init", then lyceum add feat "<title>"$'
+
+# check re-hashes the project approval like testing: clean right after it,
+# then lyceum/SPEC.md and an area file edited and committed are each a finding.
+exec lyceum check --ci
+! stdout 'approval-integrity'
+exec sh -c 'echo "Notes." >> lyceum/SPEC.md && echo "Refunds." >> lyceum/spec/orders.md'
+exec git commit -q -am 'edit specs after approval'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '^exit=2$'
+stdout '\{"check":"approval-integrity","severity":"fail","message":"the project approval no longer matches lyceum/SPEC.md: it changed after it was approved","unit":"","path":"lyceum/SPEC.md","next":"the owner runs \\"lyceum approve project\\" in a terminal, or restore lyceum/SPEC.md \(git log -p -- lyceum/SPEC.md shows the edits\)"\}'
+stdout '\{"check":"approval-integrity","severity":"fail","message":"the project approval no longer matches lyceum/spec/orders.md: it changed after it was approved","unit":"","path":"lyceum/spec/orders.md",'
+! stdout 'lyceum/spec/billing.md'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stderr '^  fail: approval-integrity: the project approval no longer matches lyceum/SPEC.md: it changed after it was approved$'
+stderr '^  fail: approval-integrity: the project approval no longer matches lyceum/spec/orders.md: it changed after it was approved$'
+
+# The owner re-approving project clears both.
+ttyrun $WORK/project.txt 'lyceum approve project'
+stdout '^exit=0$'
+exec lyceum check --ci
+! stdout 'approval-integrity'
+! stderr 'approval-integrity'
+
+# A brownfield repo with registered areas never shows project pending.
+exec git switch -q -c brown init
+cp $WORK/spec-index.md lyceum/SPEC.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+cp $WORK/billing.md lyceum/spec/billing.md
+cp $WORK/go.mod go.mod
+cp $WORK/main.go main.go
+exec lyceum status
+stdout '^Pending approvals: none$'
+
+-- project.txt --
+project
+-- spec-index.md --
+# Specification index
+
+This file is the index. Load an area file only when the work needs it.
+
+## Area registry
+
+The CLI owns this table.
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders and their lifecycle | AC1 |
+| billing | `spec/billing.md` | Invoices | AC2 |
+-- orders.md --
+# Orders
+-- billing.md --
+# Billing
+
+Invoices.
+-- go.mod --
+module example.com/shop
+-- main.go --
+package main

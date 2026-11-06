@@ -1,0 +1,98 @@
+# AC136: given a record or an area file whose cited file changed, when status runs, then it lists the record or area as drifted and names the file
+cd $REPO
+exec lyceum init
+mkdir src lyceum/spec lyceum/understand lyceum/trace
+cp $WORK/a.ts src/a.ts
+cp $WORK/b.ts src/b.ts
+cp $WORK/payments-area.md lyceum/spec/payments.md
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+cp $WORK/understand.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+cp $WORK/trace.md lyceum/trace/refund.md
+exec lyceum record lyceum/trace/refund.md
+
+# All fresh: only counted.
+exec lyceum status
+stdout '^Records: 3 fresh, 0 drifted, 0 broken$'
+! stdout '^  (drifted|broken) '
+exec lyceum check
+! stdout 'record-freshness'
+
+# src/a.ts changes: the record and the area citing it are drifted, each naming src/a.ts.
+cp $WORK/a2.ts src/a.ts
+exec lyceum status
+cmp stdout $WORK/want-drifted.txt
+! stderr .
+exec lyceum status --json
+jsonobject
+stdout '"records":\[\{"path":"lyceum/spec/payments.md","kind":"area","state":"drifted","changed":\["src/a.ts"\]\},\{"path":"lyceum/understand/6ae678-how-payments-work.md","kind":"understand","id":"6ae678-how-payments-work","state":"drifted","changed":\["src/a.ts","src/"\]\}\],"records_fresh":1'
+
+# Committing the change changes nothing: freshness is the content, not the commit.
+exec git commit -q -am 'change a'
+exec lyceum status
+stdout '^Records: 1 fresh, 2 drifted, 0 broken$'
+
+# src/b.ts is deleted: the trace citing it is broken, naming it.
+exec git rm -q src/b.ts
+exec lyceum status
+stdout '^Records: 0 fresh, 2 drifted, 1 broken$'
+stdout '^  broken lyceum/trace/3f4fbd-refund-flow.md: missing src/b.ts$'
+stdout '^  drifted lyceum/understand/6ae678-how-payments-work.md: changed src/a.ts, src/$'
+
+# check warns about each, locally and in CI, and never fails or records a bypass.
+exec lyceum check --pre-commit
+stdout '^warn: record-freshness: lyceum/spec/payments.md is drifted: changed src/a.ts$'
+stdout '^warn: record-freshness: lyceum/understand/6ae678-how-payments-work.md is drifted: changed src/a.ts, src/$'
+stdout '^warn: record-freshness: lyceum/trace/3f4fbd-refund-flow.md is broken: missing src/b.ts$'
+stdout '^  to fix: redo the record from the code, then run "lyceum record lyceum/trace/3f4fbd-refund-flow.md"$'
+! stdout 'bypass event'
+exec sh -c 'printf "| payments | \`spec/payments.md\` | Payments | |\n" >> lyceum/SPEC.md'
+exec git add lyceum/SPEC.md
+exec git commit -q -m 'drop b'
+exec lyceum check --ci
+stdout '^warn: record-freshness: lyceum/trace/3f4fbd-refund-flow.md is broken: missing src/b.ts$'
+exec git status --porcelain
+! stdout .
+
+-- a.ts --
+export const a = 1
+-- a2.ts --
+export const a = 2
+-- b.ts --
+export const b = 2
+-- payments-area.md --
+---
+cites:
+  - path: src/a.ts
+    blob: "41715495f45f651e6cf7d38f58a3d512abcfa440"
+---
+# Payments
+
+## As built
+
+Payments live in src/a.ts.
+-- understand.md --
+---
+kind: understand
+title: How payments work
+cites:
+  - path: src/a.ts
+  - path: src/
+---
+-- trace.md --
+---
+kind: trace
+title: Refund flow
+cites:
+  - path: src/b.ts
+---
+-- want-drifted.txt --
+No open units
+Pending approvals: none
+Repo gates:
+  project: pending, the project interview has not finished
+Records: 1 fresh, 2 drifted, 0 broken
+  drifted lyceum/spec/payments.md: changed src/a.ts
+  drifted lyceum/understand/6ae678-how-payments-work.md: changed src/a.ts, src/
+Next: finish the project interview with your agent's lyceum-init skill, then run "lyceum approve project" yourself in a terminal

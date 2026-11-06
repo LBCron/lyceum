@@ -1,0 +1,81 @@
+# AC137: given lyceum eject inside a harness or without a TTY, then it refuses and changes nothing; given the hook installed, then an agent shell call to lyceum eject is blocked
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init --harness claude --harness codex --harness commandcode --harness opencode --harness pi
+grep '^  harness_prompt: allow$' lyceum/config.yaml
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# Inside a harness, with a terminal and eject typed: refused before anything is asked, naming the variable.
+ttyin -stdin $WORK/eject.txt
+exec sh -c 'CLAUDECODE=1 lyceum eject >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t eject: this is running inside an agent harness \(CLAUDECODE is set\); eject is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum eject" yourself in your own terminal, outside the agent$'
+stderr '^Next: use a separate terminal that the agent doesn''t control; '
+! stderr 'Type eject'
+exec git status --porcelain
+! stdout .
+
+# Each other harness's marker too.
+ttyin -stdin $WORK/eject.txt
+exec sh -c 'PI_CODING_AGENT=true lyceum eject >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '\(PI_CODING_AGENT is set\)'
+exec git status --porcelain
+! stdout .
+
+# Without a terminal, eject typed on stdin: refused, nothing changed.
+stdin $WORK/eject.txt
+! exec lyceum eject
+! stdout .
+stderr '^Can''t eject: stdin and stdout must both be a terminal; eject is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum eject" yourself in a terminal$'
+! stderr 'Type eject'
+exec git status --porcelain
+! stdout .
+exists .agents/skills/lyceum-feat/SKILL.md .claude/settings.json .pi/extensions/lyceum.ts
+
+# The hook blocks an agent's shell call to eject, for every harness, in each form approve is blocked,
+# with no harness-prompt route even where approve has one (Claude Code, OpenCode, Pi) and harness_prompt is allow.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum eject'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+cmp stdout $WORK/deny-json.txt
+! stderr .
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=lyceum approve spec && ./dist/lyceum --json eject'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecision":"deny"'
+! exists .lyceum/approve-grant.json
+payload codex/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum eject'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+cmp stdout $WORK/deny-json.txt
+payload commandcode/shell.json $WORK/p.json 'echo lyceum approve spec=/usr/local/bin/lyceum eject'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+cmp stdout $WORK/deny-json.txt
+payload opencode/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum eject'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+cmp stdout $WORK/deny-shim.txt
+payload pi/shell.json $WORK/p.json 'echo lyceum approve spec=sh -c ''lyceum eject'''
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+cmp stdout $WORK/deny-shim.txt
+! exists .lyceum/approve-grant.json
+
+# Through the hook command init installed in Claude Code's settings, as the harness runs it.
+payload claude/shell.json $WORK/p.json 'echo lyceum approve spec=npx lyceum eject'
+stdin $WORK/p.json
+hookrun .claude/settings.json
+cmp stdout $WORK/deny-json.txt
+
+-- eject.txt --
+eject
+-- deny-json.txt --
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this command: \"lyceum eject\" is for the owner, typed in their own terminal. Next: stop and ask the owner to run it themselves. Do not retry this command or work around it."}}
+-- deny-shim.txt --
+{"decision":"deny","reason":"Lyceum blocked this command: \"lyceum eject\" is for the owner, typed in their own terminal. Next: stop and ask the owner to run it themselves. Do not retry this command or work around it."}

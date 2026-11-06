@@ -1,0 +1,132 @@
+# amend per unit type (units.md, "Amend"): it refuses where there is no approved plan to amend
+# (no unit, a closed unit, a bug, a doc, a trivial chore, a feat not yet approved), and reopens a planned
+# chore at plan and a refactor at plan, invalidating approve tests given after the plan approval and keeping intent.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# No unit on the branch.
+! exec lyceum amend 'change'
+stderr '^Can''t amend the plan: this branch has no open unit, so there is no plan to amend$'
+
+# A feat whose spec is not approved yet has nothing to amend.
+exec lyceum add feat 'CSV export'
+! exec lyceum amend 'change'
+stderr '^Can''t amend [0-9a-f]{6}-csv-export: unit [0-9a-f]{6}-csv-export has no approval of its spec gate yet, so there is nothing to amend$'
+stderr '^Next: change the plan in lyceum/plan/[0-9a-f]{6}-csv-export\.md; the owner approves it at spec$'
+stderr '^Next: or run "lyceum status" to see where the unit is$'
+
+# A bug has no plan: a new cause is a new bug.
+exec git switch -q main
+exec lyceum add bug 'Total off by one'
+! exec lyceum amend 'another cause'
+stderr '^Can''t amend [0-9a-f]{6}-total-off-by-one: a bug has no plan to amend: a different cause is a different bug$'
+stderr '^Next: start a unit for the new cause: lyceum add bug "<title>"$'
+
+# A doc has no judgment gate.
+exec git switch -q main
+exec lyceum add doc 'Usage guide'
+! exec lyceum amend 'more'
+stderr '^Can''t amend [0-9a-f]{6}-usage-guide: a doc unit has no judgment gate, so it has no approved plan to amend$'
+
+# A trivial chore approved nothing; once closed, nothing can be amended.
+exec git switch -q main
+exec lyceum chore 'Fix typo'
+! exec lyceum amend 'more'
+stderr '^Can''t amend [0-9a-f]{6}-fix-typo: chore [0-9a-f]{6}-fix-typo is trivial, so it has no approved plan to amend$'
+stderr '^Next: run "lyceum plan" to move it to its planned tier, where the owner approves a plan$'
+exec lyceum close
+! exec lyceum amend 'more'
+stderr '^Can''t amend the plan: unit [0-9a-f]{6}-fix-typo is closed, so its plan can no longer change$'
+
+# A planned chore goes back to plan.
+exec git switch -q main
+exec lyceum chore 'Bump deps'
+exec lyceum plan
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum amend 'pin the old minor too'
+stdout '^Invalidated: plan$'
+stdout '^Gate: plan$'
+exec sh -c 'grep "^gate: plan$" lyceum/plan/*-bump-deps.md'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A refactor at build with an approve tests after its plan approval: amend invalidates plan and tests, not intent.
+exec git switch -q main
+exec lyceum refactor 'Split calc'
+linesub lyceum/plan/*-split-calc.md lyceum/plan/*-split-calc.md 'approvals: []' 'goal: readability\napprovals: []'
+exec git commit -q -am 'intent'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for [0-9a-f]{6}-split-calc$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/calc_test-edited.sh src/calc_test.sh
+exec git commit -q -am 'edited assertion'
+ttyin -stdin $WORK/tests.txt
+exec sh -c 'lyceum approve tests >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum amend 'split sub out too'
+stdout '^Invalidated: plan, tests$'
+stdout '^Gate: plan$'
+exec sh -c 'grep "\"type\":\"amend\"" lyceum/events.jsonl'
+stdout '"gate":"plan","invalidated":\["plan","tests"\]'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# The owner approves plan again; the test change needs approve tests again before verify clears.
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Not cleared: verify: these test files were changed or added since the baseline, and a test change in a refactor needs the owner''s approval: src/calc_test\.sh$'
+ttyin -stdin $WORK/tests.txt
+exec sh -c 'lyceum approve tests >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared verify for [0-9a-f]{6}-split-calc$'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- tests.txt --
+tests
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- calc_test-edited.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 2 1)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

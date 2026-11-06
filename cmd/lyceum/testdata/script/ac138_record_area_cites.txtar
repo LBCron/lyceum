@@ -1,0 +1,127 @@
+# AC138: given an area file with cites: paths and no hashes, when lyceum record lyceum/spec/<area>.md runs, then each cite's hash is filled in, no id or created is added, only that file is committed, and status lists the area as fresh; given a record that fails to parse, then status lists it as invalid with the reason and check warns
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src lyceum/spec
+cp $WORK/a.ts src/a.ts
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/billing.md lyceum/spec/billing.md
+cp $WORK/payments.md lyceum/spec/payments.md
+exec git add -A
+exec git commit -q -m 'lyceum init, spec and code'
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The agent wrote the as-built cites: with paths only: the area is invalid, and check warns.
+exec lyceum status
+stdout '^Records: 0 fresh, 0 drifted, 0 broken, 1 invalid$'
+stdout '^  invalid lyceum/spec/payments.md: field cites\[0\]: has no blob or tree$'
+exec lyceum check
+stdout '^warn: record-freshness: lyceum/spec/payments.md is invalid: field cites\[0\]: has no blob or tree$'
+stdout '^  to fix: fix the record, then run "lyceum record lyceum/spec/payments.md"$'
+
+# record fills only the cite hashes, git's own for this content, under the same name, and commits only that file.
+exec git rev-parse HEAD:src
+stdout '^7852b8ae2b8ef113cb026e4c03eb0a1c5c24fa92$'
+cp $WORK/scratch.txt scratch.txt
+exec lyceum record lyceum/spec/payments.md
+stdout '^Recorded lyceum/spec/payments.md$'
+stdout '^This is a spec edit: the project approval covered lyceum/spec/payments.md, so check flags it until the owner re-approves it$'
+stdout '^Next: the owner runs "lyceum approve project" in a terminal$'
+! stderr .
+cmp lyceum/spec/payments.md $WORK/want-payments.md
+exec git log -1 --format=%s
+stdout '^lyceum: record lyceum/spec/payments.md$'
+exec git show --name-status --format= HEAD
+stdout '^M\tlyceum/spec/payments.md$'
+exec git show --name-only --format= HEAD
+stdout -count=1 '^.+$'
+exec git status --porcelain
+stdout '^\?\? scratch.txt$'
+
+# The area is fresh; the project approval no longer matches it until the owner re-approves.
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+! stdout invalid
+exec lyceum check
+stdout 'the project approval no longer matches lyceum/spec/payments.md: it changed after it was approved'
+! stdout 'record-freshness'
+
+# Run again unchanged, it commits nothing.
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+exec lyceum record lyceum/spec/payments.md
+stdout '^lyceum/spec/payments.md is already recorded: nothing changed$'
+exec git rev-parse HEAD
+cmp stdout $WORK/head.txt
+
+# An area file not in the registry, or one with no cites:, is refused and left as it is.
+cp $WORK/payments.md lyceum/spec/stray.md
+! exec lyceum record lyceum/spec/stray.md
+stderr '^Can''t record: lyceum/spec/stray.md is not in the area registry of lyceum/SPEC.md$'
+stderr '^Next: register it: lyceum plan --new-area stray$'
+cmp lyceum/spec/stray.md $WORK/payments.md
+! exec lyceum record lyceum/spec/billing.md
+stderr '^Can''t record: lyceum/spec/billing.md has no frontmatter, so it has no cites:$'
+rm lyceum/spec/stray.md
+
+# A record that fails to parse is invalid with the reason, and check warns.
+mkdir lyceum/understand
+cp $WORK/broken.md lyceum/understand/aaaaaa-notes.md
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken, 1 invalid$'
+stdout '^  invalid lyceum/understand/aaaaaa-notes.md: malformed frontmatter: '
+exec lyceum status --json
+stdout '"records":\[\{"path":"lyceum/understand/aaaaaa-notes.md","kind":"understand","state":"invalid","reason":"malformed frontmatter: '
+exec lyceum check
+stdout '^warn: record-freshness: lyceum/understand/aaaaaa-notes.md is invalid: malformed frontmatter: '
+
+-- project.txt --
+project
+-- a.ts --
+export const a = 1
+-- scratch.txt --
+not committed
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| payments | `spec/payments.md` | Payments | AC1 |
+| billing | `spec/billing.md` | Invoices | AC2 |
+-- billing.md --
+# Billing
+-- payments.md --
+---
+cites:
+  - path: src/a.ts
+    symbol: a
+  - path: src/
+---
+# Payments
+
+## As built
+
+Payments live in src/a.ts.
+-- want-payments.md --
+---
+cites:
+  - path: src/a.ts
+    symbol: a
+    blob: "41715495f45f651e6cf7d38f58a3d512abcfa440"
+  - path: src/
+    tree: "7852b8ae2b8ef113cb026e4c03eb0a1c5c24fa92"
+---
+# Payments
+
+## As built
+
+Payments live in src/a.ts.
+-- broken.md --
+---
+kind: understand
+title: [unclosed
+---

@@ -1,0 +1,96 @@
+# AC101: given a refactor whose plan's public_surface: list changed after approve plan, when verify would clear, then it does not clear and the output names the re-approval
+# The approved list is read from the plan in the commit the plan approval made.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum refactor 'Split calc'
+cp $WORK/plan.md lyceum/plan/6ae678-split-calc.md
+exec git commit -q -am 'intent'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for 6ae678-split-calc$'
+
+# The plan names one public-surface change; it is left uncommitted, and approve plan commits it.
+linesub lyceum/plan/6ae678-split-calc.md lyceum/plan/6ae678-split-calc.md 'goal: readability' 'goal: readability\npublic_surface: [add]'
+grep '^public_surface: \[add\]$' lyceum/plan/6ae678-split-calc.md
+exec git status --porcelain
+stdout '^ M lyceum/plan/6ae678-split-calc.md$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-split-calc.md
+
+# The build adds a second public-surface change to the plan after the approval: verify does not clear.
+cp $WORK/calc-v2.sh src/calc.sh
+exec sh -c 'sed "s/^public_surface: \[add\]$/public_surface: [add, sub]/" lyceum/plan/6ae678-split-calc.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-split-calc.md'
+grep '^public_surface: \[add, sub\]$' lyceum/plan/6ae678-split-calc.md
+exec git commit -q -am 'split calc, add sub'
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Not cleared: verify: public_surface: changed since the owner approved the plan \(commit [0-9a-f]{7}\), and a public-surface change needs the owner''s re-approval of the plan: approved \[add\], now \[add, sub\]$'
+stdout '^Gate: build$'
+stdout '^Next: restore public_surface: in lyceum/plan/6ae678-split-calc.md as approved, commit, then run "lyceum test"; or the owner re-approves the plan with the new list: reopen it with lyceum amend "<reason>", then run "lyceum approve plan" yourself in a terminal$'
+! grep '"gate":"verify"' lyceum/events.jsonl
+
+# Restored as approved: verify clears.
+exec sh -c 'sed "s/^public_surface: \[add, sub\]$/public_surface: [add]/" lyceum/plan/6ae678-split-calc.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-split-calc.md'
+exec git commit -q -am 'restore public_surface'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-split-calc$'
+stdout '^Gate: close$'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-v2.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- plan.md --
+---
+id: 6ae678-split-calc
+type: refactor
+title: Split calc
+branch: refactor/6ae678-split-calc
+status: planned
+gate: intent
+goal: readability
+approvals: []
+---
+
+## What and why
+
+Split calc into smaller functions.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

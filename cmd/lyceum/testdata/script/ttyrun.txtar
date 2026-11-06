@@ -1,0 +1,34 @@
+# ttyrun itself: a real terminal on stdin, stdout and /dev/tty; typed input, then end of file; stderr apart; the exit code; and no output lost.
+ttyrun $WORK/typed.txt 'test -t 0 && test -t 1 && echo both-terminals; echo via-dev-tty >/dev/tty; read x; echo got=$x; read y || echo end-of-input; echo apart >&2; exit 3'
+stdout '^exit=3$'
+stderr '^apart$'
+grep 'both-terminals' $WORK/tty.out
+grep 'via-dev-tty' $WORK/tty.out
+grep 'got=hello' $WORK/tty.out
+grep 'end-of-input' $WORK/tty.out
+! grep 'apart' $WORK/tty.out
+
+# The typed end of file stays out of the output, as a byte, a backspace or ^D, so a line's start stays its start.
+grep '^both-terminals' $WORK/tty.out
+! grep '[\x04\x08]|\^D' $WORK/tty.out
+
+# Everything written before the command exits is there, however fast it exits.
+ttyrun $WORK/typed.txt 'i=0; while [ $i -lt 3000 ]; do echo line$i; i=$((i+1)); done'
+stdout '^exit=0$'
+grep -count=3000 '^line' $WORK/tty.out
+grep 'line2999' $WORK/tty.out
+! grep '[\x04\x08]|\^D' $WORK/tty.out
+
+# A command's parent is the shell, whatever sh it is: approve records it (AC42). A bash sh would exec a lone command.
+ttyrun $WORK/typed.txt 'sh -c "printf parent=; ps -o comm= -p \$PPID"'
+stdout '^exit=0$'
+grep '^parent=(/bin/)?sh\r?$' $WORK/tty.out
+
+# That pattern does find each of the three.
+exec sh -c 'printf "a\004b" > eof.bin; printf "a\010b" > backspace.bin; printf "a^Db" > caret.txt'
+grep '[\x04\x08]|\^D' eof.bin
+grep '[\x04\x08]|\^D' backspace.bin
+grep '[\x04\x08]|\^D' caret.txt
+
+-- typed.txt --
+hello

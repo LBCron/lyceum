@@ -1,0 +1,66 @@
+# AC65: given a gate cleared by a run, then the gate-clear event contains that run's full record
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A feat at build whose plan adds no ACs: a passing gate-evidence run clears build and verify together.
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: []\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git rev-parse --short HEAD
+cp stdout $WORK/head.txt
+
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Cleared verify for 6ae678-csv-export$'
+stdout '^Unit: 6ae678-csv-export$'
+stdout '^Gate: close$'
+
+# One gate-clear event: unit, gate, the new status, and the run record byte for byte.
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+stdout '^1$'
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"gate-clear","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]{7,}","gate":"verify","run":\{"ts":.*\},"status":"implemented"\}$' lyceum/events.jsonl
+exec sh -c 'ls .lyceum/runs/*.json | wc -l'
+stdout '^ *1$'
+exec sh -c 'grep -qF "\"run\":$(cat .lyceum/runs/*.json)," lyceum/events.jsonl'
+exec sh -c 'grep -qF "\"commit\":\"$(cat $WORK/head.txt)\",\"dirty\":false,\"exit\":0," lyceum/events.jsonl'
+
+# The plan moved past build and verify, and the clear is committed with the plan and the log only.
+grep '^gate: close$' lyceum/plan/6ae678-csv-export.md
+grep '^status: implemented$' lyceum/plan/6ae678-csv-export.md
+exec git log -1 --format=%s
+stdout '^lyceum: clear verify 6ae678-csv-export$'
+exec git show --name-only --format= HEAD
+cmp stdout $WORK/want-files.txt
+exec git status --porcelain
+! stdout .
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- want-files.txt --
+lyceum/events.jsonl
+lyceum/plan/6ae678-csv-export.md
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

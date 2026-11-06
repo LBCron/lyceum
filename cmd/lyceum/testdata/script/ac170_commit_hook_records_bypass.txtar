@@ -1,0 +1,23 @@
+# AC170: given the pre-commit hook installed and a feat at spec, when someone commits staged code, then the commit is made and one bypass event names that code and not unstaged files
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+cp $WORK/a.go a.go
+cp $WORK/a.go unstaged.go
+exec git add a.go
+exec git commit -q -m 'code before the spec gate'
+stderr '^Wrote 1 bypass event to lyceum/events.jsonl$'
+exec git log -1 --format=%s
+stdout '^code before the spec gate$'
+grep -count=1 '"type":"bypass"' lyceum/events.jsonl
+grep '"check":"gate-before-code","message":"the branch changes code before the spec gate is cleared: a\.go"' lyceum/events.jsonl
+
+-- defaults.txt --
+
+
+-- a.go --
+package main

@@ -1,0 +1,89 @@
+# AC119: given init in a repo with .pi/ present and no other harness folder or binary, then it offers to wire only
+# Pi; given --harness codex, then Codex is wired without asking. The script's PATH holds no harness binary but the
+# fake ones it adds.
+
+# Nothing detected: nothing is offered and nothing is wired.
+cd $REPO
+exec lyceum init
+! stderr 'Wire'
+! stdout 'Wired'
+
+# .pi/ present: init offers Pi only, default yes (Enter alone accepts).
+exec git init -q -b main $WORK/pi
+exec git -C $WORK/pi config user.email owner@example.com
+mkdir $WORK/pi/.pi
+cd $WORK/pi
+stdin $WORK/enter.txt
+exec lyceum init
+stderr '^Wire Pi \(found \.pi/\)\? \[Y/n\] '
+! stderr 'Wire (Claude Code|Codex|Command Code|OpenCode)'
+stdout '^Wired Pi$'
+! stdout 'Wired (Claude Code|Codex|Command Code|OpenCode)'
+
+# Declined, Pi is not wired; with no answer at all (closed stdin), neither.
+exec git init -q -b main $WORK/no
+exec git -C $WORK/no config user.email owner@example.com
+mkdir $WORK/no/.pi
+cd $WORK/no
+stdin $WORK/no.txt
+exec lyceum init
+stderr '^Wire Pi \(found \.pi/\)\? \[Y/n\] '
+! stdout 'Wired'
+exec lyceum init --json
+stdout '"wired":\[\]'
+
+# A harness binary on PATH counts as detected too.
+exec git init -q -b main $WORK/bin
+exec git -C $WORK/bin config user.email owner@example.com
+chmod 755 $WORK/fakebin/opencode
+env OLDPATH=$PATH
+env PATH=$WORK/fakebin${:}$PATH
+cd $WORK/bin
+stdin $WORK/enter.txt
+exec lyceum init --json
+stderr '^Wire OpenCode \(found opencode on PATH\)\? \[Y/n\] '
+! stderr 'Wire (Claude Code|Codex|Command Code|Pi)'
+stdout '"wired":\["opencode"\]'
+env PATH=$OLDPATH
+
+# --harness codex wires Codex without asking, whatever was detected.
+exec git init -q -b main $WORK/codex
+exec git -C $WORK/codex config user.email owner@example.com
+cd $WORK/codex
+exec lyceum init --harness codex
+cmp stderr $WORK/offers.txt
+stdout '^Wired Codex$'
+
+# --harness is repeatable; detected harnesses it doesn't name are still offered.
+exec git init -q -b main $WORK/two
+exec git -C $WORK/two config user.email owner@example.com
+mkdir $WORK/two/.pi
+cd $WORK/two
+stdin $WORK/no.txt
+exec lyceum init --harness claude --harness commandcode --json
+stderr '^Wire Pi \(found \.pi/\)\? \[Y/n\] '
+stdout '"wired":\["claude","commandcode"\]'
+
+# An unknown --harness is a refusal, exit 2, before anything is written.
+exec git init -q -b main $WORK/bad
+exec git -C $WORK/bad config user.email owner@example.com
+cd $WORK/bad
+! exec lyceum init --harness gemini
+! stdout .
+stderr '^Can''t set up Lyceum here: unknown harness "gemini"$'
+stderr '^Next: pass --harness with one of: claude, codex, commandcode, opencode, pi$'
+! exists AGENTS.md
+! exists lyceum
+
+-- enter.txt --
+
+-- no.txt --
+n
+-- offer-pi.txt --
+Wire Pi (found .pi/)? [Y/n]
+-- offers.txt --
+Install a pre-commit hook that runs lyceum check? [Y/n] 
+Install a CI workflow that runs lyceum check --ci on pull requests? [Y/n] 
+-- fakebin/opencode --
+#!/bin/sh
+exit 0

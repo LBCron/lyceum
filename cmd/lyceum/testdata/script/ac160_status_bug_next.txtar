@@ -1,0 +1,16 @@
+# AC160: given a bug at diagnose, when status runs, then Next: names lyceum test as the step that clears verify
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add bug 'Crash'
+exec sh -c 'sed "s/^gate: .*/gate: diagnose/" lyceum/plan/*.md > plan.tmp && mv plan.tmp $(ls lyceum/plan/*.md)'
+exec lyceum status
+stdout '^Gate: diagnose$'
+stdout '^Next: write the root cause, commit the fix, then run "lyceum test": verify clears on a passing run$'
+
+# At fix too.
+exec sh -c 'sed "s/^gate: .*/gate: fix/" lyceum/plan/*.md > plan.tmp && mv plan.tmp $(ls lyceum/plan/*.md)'
+exec lyceum status
+stdout '^Gate: fix$'
+stdout '^Next: write the root cause, commit the fix, then run "lyceum test": verify clears on a passing run$'

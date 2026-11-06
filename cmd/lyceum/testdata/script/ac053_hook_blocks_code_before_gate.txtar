@@ -1,0 +1,115 @@
+# AC53: given each harness's hook (proven per harness by its captured payload fixture) and a unit whose code-opening gate (spec, plan) is not approved, when the agent writes src/x.ts, then the write is blocked with a message naming the gate
+# OpenCode and Pi payloads carry no cwd: the hook runs in the repo, as their shims run it.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# A feat at spec.
+exec lyceum add feat 'CSV export'
+stdout '^Gate: spec$'
+
+# Claude Code: write.json.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Codex: write.json.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Codex: edit.json.
+payload codex/edit.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Command Code: write.json.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# OpenCode: write.json.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}$'
+! stderr .
+
+# Pi: write.json.
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit 6ae678-csv-export has not cleared its spec gate\. Next: stop and ask the owner to run \\"lyceum approve spec\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}$'
+! stderr .
+
+# A refactor at plan, not approved. Its plan and add event are written by hand, as "lyceum refactor" would write them.
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+
+# Claude Code: write.json.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Codex: write.json.
+payload codex/write.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Codex: edit.json.
+payload codex/edit.json $WORK/p.json /repo/src/a.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# Command Code: write.json.
+payload commandcode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness commandcode
+stdout '^\{"hookSpecificOutput":\{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}\}$'
+! stderr .
+
+# OpenCode: write.json.
+payload opencode/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}$'
+! stderr .
+
+# Pi: write.json.
+payload pi/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: src/x\.ts is code, and unit aaaaaa-tidy has not cleared its plan gate\. Next: stop and ask the owner to run \\"lyceum approve plan\\" in their own terminal\. Writes under lyceum/ and docs/ are allowed\. Do not retry this write or work around it\."\}$'
+! stderr .
+
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: plan
+approvals: []
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"plan","status":"planned","unit_type":"refactor"}

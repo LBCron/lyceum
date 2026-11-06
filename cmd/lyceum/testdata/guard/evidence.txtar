@@ -1,0 +1,55 @@
+# Guard evidence: with the gate-evidence predicate off, the runs ac057_subset_record.txtar and ac059_dirty_run.txtar
+# show can't clear a gate clear one: a subset run, and a run on a dirty tree.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/unit.sh unit.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A subset run clears a feat's verify.
+exec lyceum add feat 'CSV export'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test unit
+stdout '^Cleared verify for 6ae678-csv-export$'
+! stdout 'can''t clear a gate'
+
+# A run on a dirty tree clears one too.
+exec git switch -q main
+exec lyceum add feat 'Other'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec sh -c 'echo dirty > dirty.txt'
+exec lyceum test
+stdout '^Cleared verify for '
+! stdout 'can''t clear a gate'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+echo t.sh ran
+-- unit.sh --
+echo unit.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  unit: sh ./unit.sh
+---
+
+# TESTING.md

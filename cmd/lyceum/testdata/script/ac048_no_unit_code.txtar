@@ -1,0 +1,78 @@
+# AC48: given a branch with no unit whose diff touches src/main.go, when check --ci runs, then it fails
+# Code is any path outside lyceum/ and docs/ that is not *.md or *.txt. The base branch has no branch diff.
+# Also the base falls back to origin/<base>, a missing base is a refusal, and check --ci fails where Lyceum is not set up.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# On the base branch itself there is no branch diff: no finding, even with uncommitted code.
+mkdir src
+cp $WORK/main.go src/main.go
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A branch with no unit: the uncommitted src/main.go is in its diff.
+exec git switch -q -c topic
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: no-unit: the branch has no unit and changes code, a manifest, a lockfile or CI config: src/main.go$'
+stderr '^Next: start a unit with "lyceum add" and make the changes on its branch, or take them off this branch$'
+
+# Committed, with a README change beside it: still fails, naming only the code.
+cp $WORK/main.go README.md
+exec git add -A
+exec git commit -q -m 'code with no unit'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"findings":\[\{"check":"no-unit","severity":"fail","message":"the branch has no unit and changes code, a manifest, a lockfile or CI config: src/main.go","unit":"","next":"start a unit with \\"lyceum add\\" and make the changes on its branch, or take them off this branch"\}\]\}$'
+stdout '^exit=2$'
+
+# Locally it warns: the finding is printed, one bypass event is written, exit 0.
+exec lyceum check --pre-commit
+stdout '^fail: no-unit: the branch has no unit and changes code, a manifest, a lockfile or CI config: src/main.go$'
+stdout '^Wrote 1 bypass event to lyceum/events.jsonl$'
+! stderr .
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"","actor":"owner@example.com","commit":"[0-9a-f]{7,}","check":"no-unit","message":"the branch has no unit and changes code, a manifest, a lockfile or CI config: src/main.go"\}$' lyceum/events.jsonl
+
+# In CI the base branch is often only remote-tracking: in a clone with no local
+# main, check diffs against origin/main and still reports the finding.
+exec git clone -q -b main $REPO $WORK/clone
+cd $WORK/clone
+exec git switch -q -c topic
+exec git branch -q -D main
+mkdir src
+cp $WORK/main.go src/main.go
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: no-unit: the branch has no unit and changes code, a manifest, a lockfile or CI config: src/main.go$'
+
+# With no base at all, check refuses with the fetch command, not git's error.
+exec git branch -q -r -d origin/main
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t check: the base branch main is missing: neither main nor origin/main exists here$'
+stderr '^Next: git fetch origin main$'
+stderr '^Next: fetch full history: actions/checkout with fetch-depth: 0$'
+! stderr 'fatal'
+exec sh -c 'lyceum check; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Next: git fetch origin main$'
+! stderr 'actions/checkout'
+
+# check --ci where Lyceum is not set up fails; locally it is a warning and exits 0.
+rm lyceum/config.yaml
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t check: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+exec lyceum check
+stdout '^warn: setup: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stdout '^Next: run "lyceum init"$'
+! stderr .
+exec lyceum check --json
+jsonobject
+stdout '^\{"ok":true,.*"findings":\[\{"check":"setup","severity":"warn",'
+
+-- main.go --
+package main

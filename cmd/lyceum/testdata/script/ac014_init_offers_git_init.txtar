@@ -1,0 +1,47 @@
+# AC14: init outside a git repo offers git init and runs it only after the user confirms
+env GIT_CONFIG_GLOBAL=$WORK/gitconfig
+
+# Non-interactive (no stdin): refuses with git init as the next step.
+mkdir $WORK/quiet
+cd $WORK/quiet
+! exec lyceum init
+! stdout .
+stderr '^This is not a git repository. Run git init here\? \[y/N\] $'
+stderr '^Can''t set up Lyceum here: this is not a git repository$'
+stderr '^Next: run "git init", then "lyceum init" again$'
+! exists .git
+! exists lyceum
+! exists AGENTS.md
+
+# No: same refusal, nothing written.
+mkdir $WORK/no
+cd $WORK/no
+stdin $WORK/no.txt
+! exec lyceum init
+! stdout .
+# A pipe doesn't echo the answer, so the refusal follows the prompt on its line.
+stderr 'Run git init here\? \[y/N\] Can''t set up Lyceum here: this is not a git repository$'
+stderr '^Next: run "git init", then "lyceum init" again$'
+! exists .git
+! exists lyceum
+
+# Yes: runs git init, then sets up Lyceum.
+mkdir $WORK/yes
+cd $WORK/yes
+stdin $WORK/yes.txt
+exec lyceum init
+stderr 'Run git init here\? \[y/N\] '
+stdout '^Next: commit these files: git add -A && git commit -m "lyceum init", then start your agent''s lyceum-init skill for the project interview, then run "lyceum approve project" yourself in a terminal$'
+exec git rev-parse --is-inside-work-tree
+stdout '^true$'
+exists AGENTS.md lyceum/config.yaml lyceum/events.jsonl .gitattributes
+grep '^owner: owner@example.com$' lyceum/config.yaml
+
+-- gitconfig --
+[user]
+	email = owner@example.com
+	name = Test Owner
+-- no.txt --
+n
+-- yes.txt --
+y

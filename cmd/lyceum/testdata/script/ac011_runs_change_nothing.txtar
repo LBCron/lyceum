@@ -1,0 +1,58 @@
+# AC11: given 30 lyceum test runs, when git status is checked, then no tracked file changed as a result of the runs except at most one gate-clear event
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: [AC900]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+mkdir src
+cp $WORK/export.sh src/export.sh
+cp $WORK/export_test.sh export_test.sh
+exec git add -A
+exec git commit -q -m 'CSV export'
+exec git rev-parse HEAD
+cp stdout $WORK/before.txt
+
+# The unit is clearable, so the first run clears verify and commits that; the other 29 change nothing.
+# The clock moves between runs, as a real one does, so each run gets its own record.
+exec sh -c 'i=0; while [ $i -lt 30 ]; do LYCEUM_NOW=$(printf "2026-01-01T00:01:%02dZ" $i) lyceum test >/dev/null || exit 1; i=$((i+1)); done; git status --porcelain'
+! stdout .
+grep -count=1 '"type":"gate-clear"' lyceum/events.jsonl
+exec sh -c 'git rev-list --count "$(cat $WORK/before.txt)"..HEAD'
+stdout '^1$'
+exec sh -c 'git diff --name-only "$(cat $WORK/before.txt)" HEAD'
+cmp stdout $WORK/want-diff.txt
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- export.sh --
+echo "id,total"
+-- export_test.sh --
+# TestExport_AC900: the export prints a CSV header
+sh src/export.sh | grep -q "^id,total$"
+-- want-diff.txt --
+lyceum/events.jsonl
+lyceum/plan/6ae678-csv-export.md

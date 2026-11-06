@@ -1,0 +1,37 @@
+# AC70: given a record citing src/a.ts, when src/a.ts changes, then the state is drifted and the output names src/a.ts
+# The record cites src/a.ts twice, for two symbols: the output names it once.
+cd $REPO
+exec lyceum init
+mkdir src lyceum/understand
+cp $WORK/a.ts src/a.ts
+cp $WORK/b.ts src/b.ts
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+cp $WORK/record.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+stdout '^Recorded lyceum/understand/6ae678-payments.md$'
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+cp $WORK/b.ts src/a.ts
+exec lyceum status
+stdout '^Records: 0 fresh, 1 drifted, 0 broken$'
+stdout '^  drifted lyceum/understand/6ae678-payments.md: changed src/a.ts$'
+exec lyceum status --json
+stdout '"records":\[\{"path":"lyceum/understand/6ae678-payments.md","kind":"understand","id":"6ae678-payments","state":"drifted","changed":\["src/a.ts"\]\}\]'
+
+-- a.ts --
+export const a = 1
+-- b.ts --
+export const b = 2
+-- record.md --
+---
+kind: understand
+title: Payments
+cites:
+  - path: src/a.ts
+    symbol: a
+  - path: src/b.ts
+  - path: src/a.ts
+    symbol: a()
+---

@@ -1,0 +1,91 @@
+# AC7: when the generated hash matches an existing plan's hash, add generates a different one and overwrites nothing
+# LYCEUM_SEED=1 makes the first hash every run draws 6ae678.
+
+# A plan with that hash in the checkout.
+cd $REPO
+exec lyceum init
+mkdir lyceum/plan
+cp $WORK/other.md lyceum/plan/6ae678-other.md
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+! stdout 6ae678
+stdout '^Unit: [0-9a-f]{6}-csv-export$'
+cmp lyceum/plan/6ae678-other.md $WORK/other.md
+exec git ls-files lyceum/plan
+stdout -count=2 '^.'
+
+# A plan with that hash only on the base branch, not in the checkout.
+exec git init -q -b main $WORK/b
+exec git -C $WORK/b config user.email owner@example.com
+exec git -C $WORK/b config user.name 'Test Owner'
+cd $WORK/b
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c dev
+exec git switch -q main
+mkdir lyceum/plan
+cp $WORK/other.md lyceum/plan/6ae678-other.md
+exec git add -A
+exec git commit -q -m 'other plan'
+exec git switch -q dev
+! exists lyceum/plan/6ae678-other.md
+exec lyceum add feat 'CSV export'
+! stdout 6ae678
+stdout '^Created branch feat/[0-9a-f]{6}-csv-export from main$'
+cmp lyceum/plan/6ae678-other.md $WORK/other.md
+
+# A branch with that hash, whose plan lives only on that branch.
+exec git init -q -b main $WORK/c
+exec git -C $WORK/c config user.email owner@example.com
+exec git -C $WORK/c config user.name 'Test Owner'
+cd $WORK/c
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git branch fix/6ae678-other
+exec lyceum add feat 'CSV export'
+! stdout 6ae678
+exec git branch --show-current
+stdout '^feat/[0-9a-f]{6}-csv-export$'
+! stdout 6ae678
+
+# A plan with that hash only on a remote-tracking branch whose name holds no hash.
+exec git init -q -b main $WORK/up
+exec git -C $WORK/up config user.email owner@example.com
+exec git -C $WORK/up config user.name 'Test Owner'
+cd $WORK/up
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c wip
+mkdir lyceum/plan
+cp $WORK/other.md lyceum/plan/6ae678-other.md
+exec git add -A
+exec git commit -q -m 'other plan'
+exec git switch -q main
+exec git clone -q $WORK/up $WORK/d
+cd $WORK/d
+exec git config user.email owner@example.com
+exec git config user.name 'Test Owner'
+exec git branch --list
+! stdout wip
+exec git branch -r
+stdout 'origin/wip'
+exec lyceum add feat 'CSV export'
+! stdout 6ae678
+stdout '^Unit: [0-9a-f]{6}-csv-export$'
+
+-- other.md --
+---
+id: 6ae678-other
+type: feat
+title: Other
+branch: feat/6ae678-other
+status: closed
+gate: close
+approvals: []
+---
+
+## What and why

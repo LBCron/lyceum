@@ -1,0 +1,44 @@
+# AC86: init in an empty git repo writes AGENTS.md, RULES.md, lyceum/SPEC.md, lyceum/config.yaml, lyceum/events.jsonl and .gitattributes, and not TESTING.md
+cd $REPO
+
+exec lyceum init
+cmp stderr $WORK/offers.txt
+stdout '^Created AGENTS.md$'
+stdout '^Created RULES.md$'
+stdout '^Created lyceum/SPEC.md$'
+stdout '^Created lyceum/config.yaml$'
+stdout '^Created lyceum/events.jsonl$'
+stdout '^Created .gitattributes$'
+stdout '^Created .gitignore$'
+stdout '^Created .agents/skills/lyceum-feat/SKILL.md$'
+# AC5 shape: the last line is the next action.
+# A greenfield repo hands over to the agent's project interview, then approve project.
+stdout '\nNext: commit these files: git add -A && git commit -m "lyceum init", then start your agent''s lyceum-init skill for the project interview, then run "lyceum approve project" yourself in a terminal\n$'
+
+exists AGENTS.md RULES.md lyceum/SPEC.md lyceum/config.yaml lyceum/events.jsonl .gitattributes .gitignore
+! exists TESTING.md
+
+# AGENTS.md holds the Lyceum section between markers.
+grep -count=1 '^<!-- lyceum:start -->$' AGENTS.md
+grep -count=1 '^<!-- lyceum:end -->$' AGENTS.md
+grep 'Run `lyceum status` first' AGENTS.md
+grep 'Never run `lyceum approve`' AGENTS.md
+
+# SPEC.md has an empty area registry; the event log is empty.
+grep '^## Area registry$' lyceum/SPEC.md
+! grep '^\| [a-z]' lyceum/SPEC.md
+! grep . lyceum/events.jsonl
+
+# With --json the ending is one JSON object naming the files.
+exec git init -q -b main $WORK/j
+exec git -C $WORK/j config user.email owner@example.com
+cd $WORK/j
+exec lyceum init --json
+jsonobject
+cmp stderr $WORK/offers.txt
+stdout '^\{"ok":true,"unit":null,"gate":null,"next":"commit these files: git add -A && git commit -m \\"lyceum init\\", then start your agent''s lyceum-init skill for the project interview, then run \\"lyceum approve project\\" yourself in a terminal","data":\{"created":\["AGENTS.md","RULES.md","lyceum/SPEC.md","lyceum/config.yaml","lyceum/events.jsonl",".gitattributes",".gitignore","\.agents/skills/lyceum-feat/SKILL\.md","\.agents/skills/lyceum-bug/SKILL\.md","\.agents/skills/lyceum-doc/SKILL\.md","\.agents/skills/lyceum-test/SKILL\.md","\.agents/skills/lyceum-refactor/SKILL\.md","\.agents/skills/lyceum-chore/SKILL\.md","\.agents/skills/lyceum-init/SKILL\.md","\.agents/skills/lyceum-status/SKILL\.md","\.agents/skills/lyceum-understand/SKILL\.md","\.agents/skills/lyceum-trace/SKILL\.md","\.agents/skills/lyceum-audit/SKILL\.md"\],"updated":\[\],"unchanged":\[\],"wired":\[\],"brownfield":false\}\}$'
+! exists TESTING.md
+
+-- offers.txt --
+Install a pre-commit hook that runs lyceum check? [Y/n] 
+Install a CI workflow that runs lyceum check --ci on pull requests? [Y/n] 

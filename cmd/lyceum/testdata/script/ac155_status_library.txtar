@@ -1,0 +1,54 @@
+# AC155: given no unit in flight, nothing pending, and lyceum/LIBRARY.md whose first entry is - feat: CSV export, when status runs, then Next: is lyceum add feat "CSV export"
+cd $REPO
+mkdir src
+cp $WORK/package.json package.json
+cp $WORK/index.js src/index.js
+exec lyceum init
+mkdir lyceum
+cp $WORK/library.md lyceum/LIBRARY.md
+exec git add -A
+exec git commit -q -m 'brownfield, with a roadmap'
+
+exec lyceum status
+stdout '^Next: lyceum add feat "CSV export"$'
+exec lyceum status --json
+stdout '"next":"lyceum add feat \\"CSV export\\""'
+
+# Reordered, a refactor or chore names its own command.
+cp $WORK/library-refactor.md lyceum/LIBRARY.md
+exec lyceum status
+stdout '^Next: lyceum refactor "Split the store"$'
+
+# A pending gate comes first.
+cp $WORK/TESTING.md TESTING.md
+exec lyceum status
+stdout '^Next: run "lyceum approve testing" yourself in a terminal$'
+rm TESTING.md
+exec git add -A
+exec git commit -q -m 'reorder the roadmap'
+
+# A unit in flight comes first, here and on another branch.
+exec lyceum add doc 'Guide'
+exec lyceum status
+stdout '^Next: finish the draft work described in the plan$'
+exec git switch -q main
+exec lyceum status
+! stdout 'Split the store'
+
+-- package.json --
+{"name": "app"}
+-- index.js --
+console.log(1)
+-- library.md --
+# Roadmap
+
+- feat: CSV export (AC9012)
+- bug: Crash
+-- library-refactor.md --
+- refactor: Split the store
+- feat: CSV export
+-- TESTING.md --
+---
+lyceum: 1
+suite: go test ./...
+---

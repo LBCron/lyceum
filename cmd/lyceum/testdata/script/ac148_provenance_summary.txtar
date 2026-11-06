@@ -1,0 +1,49 @@
+# AC148: given approve spec on files containing an [AGENT-PROPOSED: …] line, then the summary lists that line with its file before the confirmation
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+cp $WORK/spec-index.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'setup'
+exec lyceum add feat 'CSV export'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+exec git add -A
+exec git commit -q -m 'draft'
+
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+stderr '(?s)Text the agent wrote and you did not state:\n  lyceum/spec/orders.md:3: Orders export \[AGENT-PROPOSED: CSV only\]\.\n  lyceum/spec/orders.md:5: Dates are UTC \[DERIVED: D12\]\.\n.*Type the gate name to approve \(spec\): '
+! stderr 'Plain line'
+
+-- orders.md --
+# Orders
+
+Orders export [AGENT-PROPOSED: CSV only].
+Plain line.
+Dates are UTC [DERIVED: D12].
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+areas: [orders]
+approvals: []
+---
+
+## What and why
+-- spec.txt --
+spec

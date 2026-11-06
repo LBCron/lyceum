@@ -1,0 +1,21 @@
+# AC176: given init, then .gitignore lists .commandcode/taste/, .claude/settings.local.json and .claude/worktrees/ once each, on a re-run too, keeping existing lines, and files written there do not dirty the tree
+cd $REPO
+cp $WORK/gitignore .gitignore
+exec lyceum init
+exec lyceum init
+grep '^my-own$' .gitignore
+grep -count=1 '^\.commandcode/taste/$' .gitignore
+grep -count=1 '^\.claude/settings\.local\.json$' .gitignore
+grep -count=1 '^\.claude/worktrees/$' .gitignore
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+mkdir .commandcode/taste .claude/worktrees/x
+cp $WORK/gitignore .commandcode/taste/taste.md
+cp $WORK/gitignore .claude/settings.local.json
+cp $WORK/gitignore .claude/worktrees/x/f
+exec git status --porcelain
+! stdout .
+
+-- gitignore --
+my-own

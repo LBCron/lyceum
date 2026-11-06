@@ -1,0 +1,17 @@
+{
+  "session_id": "SESSION",
+  "transcript_path": "/home/user/transcript.jsonl",
+  "cwd": "/repo",
+  "prompt_id": "SESSION",
+  "permission_mode": "bypassPermissions",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Write",
+  "tool_input": {
+    "file_path": "/repo/note.txt",
+    "content": "hi"
+  },
+  "tool_use_id": "CALL"
+}

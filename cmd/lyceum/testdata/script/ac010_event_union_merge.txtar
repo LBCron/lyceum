@@ -1,0 +1,45 @@
+# AC10: two branches that each append one event merge in either order with no conflict and both lines present
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# Branch A and branch B are both cut from main, and each appends one add event.
+exec lyceum add feat 'Alpha'
+stdout '^Unit: 6ae678-alpha$'
+exec git switch -q main
+exec lyceum add feat 'Beta'
+stdout '^Unit: 3f4fbd-beta$'
+exec git switch -q main
+exec git show feat/6ae678-alpha:lyceum/events.jsonl
+stdout -count=1 '"unit":"6ae678-alpha"'
+exec git show feat/3f4fbd-beta:lyceum/events.jsonl
+stdout -count=1 '"unit":"3f4fbd-beta"'
+
+# A fresh clone keeps the pre-merge state for the reverse order.
+exec git clone -q $REPO $WORK/rev
+exec git -C $WORK/rev config user.name 'Test Owner'
+exec git -C $WORK/rev config user.email owner@example.com
+
+# A then B.
+exec git merge --no-ff -q -m 'merge alpha' feat/6ae678-alpha
+exec git merge --no-ff -q -m 'merge beta' feat/3f4fbd-beta
+exec git diff --name-only --diff-filter=U
+! stdout .
+exec git status --porcelain
+! stdout .
+grep -count=1 '"type":"add","unit":"6ae678-alpha"' lyceum/events.jsonl
+grep -count=1 '"type":"add","unit":"3f4fbd-beta"' lyceum/events.jsonl
+jsonl lyceum/events.jsonl 2
+
+# B then A.
+cd $WORK/rev
+exec git merge --no-ff -q -m 'merge beta' origin/feat/3f4fbd-beta
+exec git merge --no-ff -q -m 'merge alpha' origin/feat/6ae678-alpha
+exec git diff --name-only --diff-filter=U
+! stdout .
+exec git status --porcelain
+! stdout .
+grep -count=1 '"type":"add","unit":"6ae678-alpha"' lyceum/events.jsonl
+grep -count=1 '"type":"add","unit":"3f4fbd-beta"' lyceum/events.jsonl
+jsonl lyceum/events.jsonl 2

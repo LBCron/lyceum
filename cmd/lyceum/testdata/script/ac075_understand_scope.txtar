@@ -1,0 +1,67 @@
+# AC75: given a hint-less understand on a repo over a size threshold, then the CLI prints the measured scope and the agent asks before reading; the threshold is understand.warn_threshold, default 2,000 files or 200,000 lines
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+grep '^  warn_threshold:$' lyceum/config.yaml
+grep '^    files: 2000$' lyceum/config.yaml
+grep '^    lines: 200000$' lyceum/config.yaml
+mkdir src
+cp $WORK/a.go src/a.go
+cp $WORK/b.go src/b.go
+exec git add src
+exec git commit -q -m 'code'
+
+# Under the default threshold: the scope is printed, with no warning; nothing is created.
+exec lyceum understand
+stdout '^Candidates: none$'
+stdout '^Scope: [0-9]+ files, [0-9]+ lines$'
+! stdout 'warn_threshold'
+stdout '^Next: ask the user what to understand, then run "lyceum understand \\"<hint>\\""$'
+exec git status --porcelain
+! stdout .
+
+# The exact count is unit-tested (TestMeasure_AC75).
+exec lyceum understand --json
+jsonobject
+stdout '"hint":"","candidates":\[\],"scope":\{"files":[0-9]+,"lines":[0-9]+,"threshold":\{"files":2000,"lines":200000\},"over":false\}'
+
+# Over the threshold (a lower one in config), in files or in lines: the agent is told to ask first.
+exec sh -c 'sed "s/files: 2000/files: 3/" lyceum/config.yaml > sed.tmp && mv sed.tmp lyceum/config.yaml'
+exec lyceum understand
+stdout '^The scope is over understand.warn_threshold \(3 files or 200000 lines\): ask the user before reading the code$'
+stdout '^Next: ask the user before reading the code: the scope is over understand.warn_threshold; ask the user what to understand'
+exec lyceum understand --json
+stdout '"over":true'
+exec sh -c 'sed "s/files: 3/files: 2000/; s/lines: 200000/lines: 4/" lyceum/config.yaml > sed.tmp && mv sed.tmp lyceum/config.yaml'
+exec lyceum understand
+stdout '^The scope is over understand.warn_threshold \(2000 files or 4 lines\)'
+
+# Bare trace measures the same scope.
+exec lyceum trace
+stdout '^The scope is over understand.warn_threshold \(2000 files or 4 lines\)'
+stdout '^Next: ask the user before reading the code: the scope is over understand.warn_threshold; ask the user which flow to trace'
+
+# With a hint, there is no scope and no warning: the hint is printed back.
+exec lyceum understand 'how payments work'
+stdout '^Hint: how payments work$'
+! stdout '^Scope:'
+! stdout 'warn_threshold'
+stdout '^Next: if a fresh candidate answers the hint, summarise it; if one is drifted or broken, refresh it from the code; otherwise read the code, write the record in lyceum/understand/ with cites: paths only, then run "lyceum record lyceum/understand/<file>.md"$'
+exec lyceum understand --json 'how payments work'
+stdout '"hint":"how payments work","candidates":\[\],"scope":null'
+
+# understand writes nothing.
+exec git status --porcelain
+stdout '^ M lyceum/config.yaml$'
+stdout -count=1 '^.+$'
+
+-- a.go --
+package src
+
+func A() int {
+	return 1
+}
+-- b.go --
+package src
+var B = 2

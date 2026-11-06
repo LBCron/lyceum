@@ -1,0 +1,83 @@
+# AC100: given a refactor unit, when the agent finds a needed behaviour change, then it stops, offers add bug or add feat, and the refactor branch's diff contains no test assertion change the owner has not approved and no change to spec behaviour text
+# Stopping and offering is the skill's rule (TestSkillStops_AC30_AC100); here is the CLI half: an unapproved test change or spec text does not get through.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum refactor 'Tidy'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum test
+stdout '^Cleared baseline for 6ae678-tidy$'
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+cp $WORK/calc-tidy.sh src/calc.sh
+exec git commit -q -am 'tidy add'
+
+# An unapproved assertion change in the branch diff: verify does not clear.
+cp $WORK/calc_test-edited.sh src/calc_test.sh
+exec git commit -q -am 'assertion change'
+exec lyceum test
+stdout '^Not cleared: verify: these test files were changed or added since the baseline'
+! grep '"gate":"verify"' lyceum/events.jsonl
+exec git revert --no-edit HEAD
+exec lyceum test
+stdout '^Cleared verify for 6ae678-tidy$'
+
+# Spec behaviour text in the branch diff: close refuses.
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'spec text'
+! exec lyceum close
+stderr 'a refactor changes the spec only in cites: frontmatter'
+! grep '"type":"close"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-tidy.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- calc_test-edited.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" != 4 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- orders.md --
+# orders
+
+Orders change behaviour here.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+subsets:
+  changed: sh ./t.sh
+---
+
+# TESTING.md

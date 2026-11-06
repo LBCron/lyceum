@@ -1,0 +1,69 @@
+# AC79: given a full-run trace, then every step in the record is marked read or observed; record refuses a trace with a step under ## Steps marked neither
+cd $REPO
+exec lyceum init
+mkdir src lyceum/trace
+cp $WORK/order.go src/order.go
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+
+# A step marked neither [read] nor [observed] is refused, naming the step; nothing is written or committed.
+cp $WORK/unmarked.md lyceum/trace/order.md
+! exec lyceum record lyceum/trace/order.md
+stderr '^Can''t record: lyceum/trace/order.md is not a valid record: ## Steps: step 2 is marked neither \[read\] nor \[observed\]: "- Place\(\) writes the order row"$'
+stderr '^Next: fix it in lyceum/trace/order.md, then run "lyceum record lyceum/trace/order.md" again$'
+cmp lyceum/trace/order.md $WORK/unmarked.md
+exec git rev-parse HEAD
+cmp stdout $WORK/head.txt
+
+# Left unrecorded, status shows it invalid with the same reason.
+exec lyceum status
+stdout '^  invalid lyceum/trace/order.md: '
+
+# Every step marked: recorded. Indented detail lines and lines outside ## Steps are not steps.
+cp $WORK/marked.md lyceum/trace/order.md
+exec lyceum record lyceum/trace/order.md
+stdout '^Recorded lyceum/trace/6ae678-order-placement.md$'
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+-- order.go --
+package src
+
+func Place() {}
+-- unmarked.md --
+---
+kind: trace
+title: Order placement
+cites:
+  - path: src/order.go
+    symbol: Place()
+---
+# Order placement
+
+## Steps
+
+- [observed] POST /orders reaches Place()
+- Place() writes the order row
+-- marked.md --
+---
+kind: trace
+title: Order placement
+cites:
+  - path: src/order.go
+    symbol: Place()
+---
+# Order placement
+
+- an overview bullet outside the steps
+
+## Steps
+
+- [observed] POST /orders reaches Place()
+  - data in: the cart
+- [read] Place() writes the order row
+
+## Findings
+
+- none

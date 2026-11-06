@@ -1,0 +1,42 @@
+# AC5: a command's last output names the unit (if any), the gate and the next action; with --json it is one JSON object
+cd $REPO
+
+# Refusal: exactly one JSON object on stdout, nothing on stderr.
+! exec lyceum eject --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"stdin and stdout must both be a terminal; eject is for the owner, typed in their own terminal","next":\["run \\"lyceum eject\\" yourself in a terminal","use a separate terminal [^\n]+"\]\}\}$'
+! stderr .
+
+# The flag is global: it works before the command too.
+! exec lyceum --json log
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"Lyceum is not set up in this repo: lyceum/config.yaml is missing","next":\["run \\"lyceum init\\""\]\}\}$'
+! stderr .
+
+# Human mode: the last line is the next action.
+! exec lyceum eject
+! stdout .
+stderr '\nNext: use a separate terminal that the agent doesn''t control; [^\n]+\n$'
+
+# Success, no unit: the last line is the next action, and the JSON object has unit and gate null.
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum status
+stdout '\nNext: finish the project interview with your agent''s lyceum-init skill, then run "lyceum approve project" yourself in a terminal\n$'
+! stdout '^Unit:'
+! stdout '^Gate:'
+exec lyceum status --json
+jsonobject
+stdout '^\{"ok":true,"unit":null,"gate":null,"next":"finish the project interview with your agent''s lyceum-init skill, then run \\"lyceum approve project\\" yourself in a terminal","data":\{.*\}\}$'
+! stderr .
+
+# Success with a unit: the output ends with its unit, gate and next action, in that order.
+exec lyceum add feat 'CSV export'
+exec lyceum status
+stdout '\nUnit: 6ae678-csv-export\nGate: spec\nNext: run "lyceum approve spec" yourself in a terminal\n$'
+! stderr .
+exec lyceum status --json
+jsonobject
+stdout '^\{"ok":true,"unit":"6ae678-csv-export","gate":"spec","next":"run \\"lyceum approve spec\\" yourself in a terminal","data":\{.*\}\}$'
+! stderr .

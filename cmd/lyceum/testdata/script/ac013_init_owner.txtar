@@ -1,0 +1,18 @@
+# AC13: init in a git repo writes lyceum/config.yaml with owner equal to git config user.email
+cd $REPO
+exec git config user.email someone@example.org
+
+exec lyceum init
+grep '^owner: someone@example.org$' lyceum/config.yaml
+# With no remote, units are cut from the current branch.
+grep '^base_branch: main$' lyceum/config.yaml
+
+# No user.email: init refuses before writing anything.
+exec git init -q -b main $WORK/anon
+cd $WORK/anon
+! exec lyceum init
+! stdout .
+stderr '^Can''t set up Lyceum here: git user.email is not set, and it names the owner$'
+stderr '^Next: run "git config user.email <your email>", then "lyceum init" again$'
+! exists lyceum
+! exists AGENTS.md

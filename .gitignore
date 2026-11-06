@@ -1,0 +1,40 @@
+# secrets — never committed (RULES.md)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.keystore
+*.jks
+*.mobileprovision
+*.p8
+secrets/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# logs / coverage
+*.log
+coverage/
+!internal/acmap/testdata/coverage/
+.nyc_output/
+
+# cli
+node_modules/
+dist/
+build/
+__pycache__/
+.venv/
+target/
+
+# lyceum
+.lyceum/
+.commandcode/taste/
+.claude/settings.local.json
+.claude/worktrees/

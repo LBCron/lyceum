@@ -1,0 +1,60 @@
+# AC147: given an area file with no registry row, or a row whose range omits an AC in its file, when check --ci runs, then it fails naming the file and the missing AC; locally it warns
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/billing.md lyceum/spec/billing.md
+exec git add -A
+exec git commit -q -m 'an area file with no row'
+
+# No row: check --ci fails naming the file; locally it warns, with no bypass event.
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'registry: lyceum/spec/billing.md has no row in the area registry of lyceum/SPEC.md$'
+stderr '^Next: register it: lyceum plan --new-area billing$'
+exec lyceum check --pre-commit
+stdout 'registry: lyceum/spec/billing.md has no row'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# A row whose range omits an AC: names the AC.
+cp $WORK/spec-omits.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'a row that omits AC7'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'registry: the registry row of lyceum/spec/billing.md omits ACs it defines: AC7$'
+stderr '^Next: add them to the row of lyceum/spec/billing.md in lyceum/SPEC.md$'
+exec lyceum check --pre-commit
+stdout 'omits ACs it defines: AC7$'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Ranges and lists are both read: the row is accurate.
+cp $WORK/spec-ok.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'accurate row'
+exec lyceum check --ci
+! stdout 'registry'
+
+-- billing.md --
+# Billing
+
+| ID | Criterion |
+|---|---|
+| AC2 | Given a, then b |
+| AC3 | Given c, then d |
+| AC7 | Given e, then f |
+-- spec-omits.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| billing | `spec/billing.md` | Billing | AC2–AC3 |
+-- spec-ok.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| billing | `spec/billing.md` | Billing | AC2-AC3, AC7 |

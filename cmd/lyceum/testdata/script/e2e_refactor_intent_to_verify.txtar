@@ -1,0 +1,160 @@
+# End to end, a refactor from intent to verify: the owner approves intent; a
+# characterization test is added and approved, and baseline clears with the fingerprint; the agent writes the steps
+# and check is clean; the owner approves plan;
+# the build changes code only. A benchmark that exits 1 holds verify; a changed test assertion holds it until
+# the owner's approve tests; then verify clears and the refactor is implemented, at close.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/bench.sh bench.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The refactor unit: its plan and add event are written by hand, as `lyceum refactor` would write them.
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'add refactor'
+
+# intent, then baseline: the characterization test is approved, and the run clears baseline.
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/calc_more_test.sh src/calc_more_test.sh
+exec git add -A
+exec git commit -q -m 'characterization test'
+exec lyceum test
+stdout '^Not cleared: baseline: these test files in the branch diff are characterization tests, and they need the owner''s approval at their current hash: src/calc_more_test.sh$'
+ttyin -stdin $WORK/tests.txt
+exec sh -c 'lyceum approve tests >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum test
+stdout '^Cleared baseline for aaaaaa-tidy$'
+stdout '^Gate: plan$'
+grep '"gate":"baseline"' lyceum/events.jsonl
+
+# Between intent and plan the agent writes the steps; the intent approval still holds.
+exec sh -c 'printf "\n## Steps\n\n1. Tidy add.\n" >> lyceum/plan/aaaaaa-tidy.md'
+exec git commit -q -am 'steps'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# plan opens the code: the refactor is at build, in-progress.
+ttyin -stdin $WORK/plan.txt
+exec sh -c 'lyceum approve plan >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: in-progress$' lyceum/plan/aaaaaa-tidy.md
+
+# The build changes code only; the suite passes, but the benchmark exits 1: verify does not clear.
+cp $WORK/calc-tidy.sh src/calc.sh
+exec git commit -q -am 'tidy add'
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Benchmark: Failed: sh ./bench.sh exited 1 after \S+$'
+stdout '^too slow$'
+stdout '^Not cleared: verify: the benchmark sh ./bench.sh exited 1; the full output is in \.lyceum/runs/\S+\.out$'
+stdout '^Gate: build$'
+stdout '^Next: make the refactor meet the benchmark, commit, then run "lyceum test"$'
+! grep '"gate":"verify"' lyceum/events.jsonl
+
+# Faster code, but a test assertion changed too: verify blocks before the benchmark runs, and names the file.
+cp $WORK/calc-fast.sh src/calc.sh
+cp $WORK/calc_test-edited.sh src/calc_test.sh
+exec git commit -q -am 'fast add, and an edited assertion'
+exec lyceum test
+stdout '^Not cleared: verify: these test files were changed or added since the baseline, and a test change in a refactor needs the owner''s approval: src/calc_test.sh$'
+! stdout '^Benchmark:'
+! grep '"gate":"verify"' lyceum/events.jsonl
+
+# The owner approves the change: the summary shows the edited assertion; then verify clears.
+ttyin -stdin $WORK/tests.txt
+exec sh -c 'lyceum approve tests >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+stderr '^  src/calc_test.sh sha256:[0-9a-f]{64}$'
+! stderr '^  src/calc_more_test.sh '
+stderr '^-\[ "\$\(add 1 2\)" = 3 \]'
+stderr '^\+\[ "\$\(add 2 1\)" = 3 \]'
+exec lyceum test
+stdout '^Benchmark: Passed: sh ./bench.sh exited 0 after \S+$'
+stdout '^Cleared verify for aaaaaa-tidy$'
+stdout '^Gate: close$'
+grep '^gate: close$' lyceum/plan/aaaaaa-tidy.md
+grep '^status: implemented$' lyceum/plan/aaaaaa-tidy.md
+exec git status --porcelain
+! stdout .
+
+# The log replays every event: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- intent.txt --
+intent
+-- plan.txt --
+plan
+-- tests.txt --
+tests
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- bench.sh --
+grep -q '# fast' src/calc.sh || { echo "too slow"; exit 1; }
+echo "fast enough"
+-- calc.sh --
+add() { echo $(($1 + $2)); }
+-- calc-tidy.sh --
+add() {
+	echo $(($1 + $2))
+}
+-- calc-fast.sh --
+# fast
+add() {
+	echo $(($1 + $2))
+}
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- calc_test-edited.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 2 1)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- calc_more_test.sh --
+# TestAddMore
+. ./src/calc.sh
+[ "$(add 2 2)" = 4 ] || { echo "--- FAIL: TestAddMore"; exit 1; }
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: planned
+gate: intent
+approvals: []
+benchmark: sh ./bench.sh
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"aaaaaa-tidy","actor":"owner@example.com","commit":"","branch":"refactor/aaaaaa-tidy","gate":"intent","status":"planned","unit_type":"refactor"}
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

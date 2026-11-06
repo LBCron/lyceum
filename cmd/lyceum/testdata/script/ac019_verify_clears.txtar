@@ -1,0 +1,51 @@
+# AC19: given a feat with spec and plan approved and the steps built, when lyceum test runs the full suite and it passes and every new AC ID is found in a test, then verify clears and a gate-clear event with the run inlined is written
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md $WORK/plan.md 'approvals: []' 'acs: [AC900]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+mkdir src
+cp $WORK/export.sh src/export.sh
+cp $WORK/export_test.sh export_test.sh
+exec git add -A
+exec git commit -q -m 'CSV export'
+
+exec lyceum test
+stdout '^Cleared verify for 6ae678-csv-export$'
+stdout '^Gate: close$'
+grep -count=1 '"type":"gate-clear"' lyceum/events.jsonl
+grep '"type":"gate-clear","unit":"6ae678-csv-export",.*"gate":"verify","run":\{"ts":.*"command":"sh ./t.sh".*"exit":0,' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: clear verify 6ae678-csv-export$'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+for f in *_test.sh; do sh "$f" || exit 1; done
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- export.sh --
+echo "id,total"
+-- export_test.sh --
+# TestExport_AC900: the export prints a CSV header
+sh src/export.sh | grep -q "^id,total$"

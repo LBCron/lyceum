@@ -1,0 +1,49 @@
+# AC143: given bare approve with two pending gates, when the confirmation for the first is typed wrong, then the walk stops with one refusal, and the prompt shown named the exact text it accepts
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp $WORK/testing.md TESTING.md
+exec git add -A
+exec git commit -q -m 'draft TESTING.md'
+cp lyceum/events.jsonl $WORK/before.jsonl
+
+# Listed once up front; the prompt names the text; the walk stops at the first gate with one refusal.
+ttyrun $WORK/wrong.txt 'lyceum approve'
+stdout '^exit=2$'
+stderr -count=1 '^Pending gates: testing, spec$'
+stderr 'Type the gate name to approve \(testing\): '
+! stderr 'approve \(spec\)'
+! stderr '^Gate: spec$'
+stderr -count=1 'Can''t'
+stderr 'Can''t approve: the confirmation of testing did not match, so the walk stopped; not approved: testing, spec$'
+stderr '^Next: run "lyceum approve" again for the gates still pending$'
+cmp lyceum/events.jsonl $WORK/before.jsonl
+
+# Wrong at the second gate: the first stays approved, and the refusal says so.
+ttyrun $WORK/second-wrong.txt 'lyceum approve'
+stdout '^exit=2$'
+stderr -count=1 'Can''t'
+stderr 'Can''t approve: approved testing; the confirmation of spec did not match, so the walk stopped; not approved: spec$'
+grep 'Approved testing' $WORK/tty.out
+! grep 'Approved spec' $WORK/tty.out
+
+# With --json, one refusal object and nothing else on the terminal's stdout.
+ttyrun $WORK/wrong.txt 'lyceum approve --json'
+stdout '^exit=2$'
+! grep 'Approved' $WORK/tty.out
+
+-- testing.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md
+-- wrong.txt --
+nope
+-- second-wrong.txt --
+testing
+nope

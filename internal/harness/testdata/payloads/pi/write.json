@@ -1,0 +1,8 @@
+{
+  "toolName": "write",
+  "toolCallId": "CALL",
+  "input": {
+    "path": "/repo/note.txt",
+    "content": "hi"
+  }
+}

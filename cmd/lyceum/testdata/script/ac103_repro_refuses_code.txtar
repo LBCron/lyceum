@@ -1,0 +1,77 @@
+# AC103: Given a bug branch whose diff against base touches src/login.go, when lyceum test --repro TestLoginPlus runs, then it refuses and names src/login.go
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+
+# The repro test and a fix together: refused, naming the non-test file and nothing else; nothing runs.
+mkdir src
+cp $WORK/login.go src/login.go
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'test and fix'
+! exec lyceum test --repro TestLoginPlus
+stderr '^Can''t run the repro test: the bug is not reproduced yet, but the branch changes files that are not tests:$'
+stderr '^  src/login.go$'
+! stderr 'login_test.sh'
+stderr '^Next: take those changes off this branch, keeping only test files \(test_files in TESTING.md\); the fix comes after repro clears$'
+! exists .lyceum/runs
+exec sh -c 'grep -q "^gate: repro$" lyceum/plan/6ae678-login-plus.md'
+
+# Uncommitted changes: refused, commit first.
+exec git rm -q src/login.go
+! exec lyceum test --repro TestLoginPlus
+stderr '^Can''t run the repro test: the working tree has uncommitted changes:$'
+stderr '^  src/login.go$'
+stderr '^Next: commit first: git add <paths> && git commit -m "<message>", then run "lyceum test --repro TestLoginPlus"$'
+! exists .lyceum/runs
+
+# No single: in TESTING.md: refused, naming single: and {name}.
+exec git commit -q -m 'drop the fix'
+cp $WORK/TESTING-nosingle.md TESTING.md
+exec git commit -q -am 'no single'
+! exec lyceum test --repro TestLoginPlus
+stderr '^Can''t run the repro test: TESTING.md sets no single:, the command that runs one named test$'
+stderr '\{name\} where the test''s name goes'
+! exists .lyceum/runs
+
+# Not a bug at repro: refused, naming the current gate.
+exec git switch -q main
+exec lyceum add feat 'CSV export'
+! exec lyceum test --repro TestLoginPlus
+stderr '^Can''t run the repro test: unit 3f4fbd-csv-export is a feat at gate spec; --repro clears only a bug''s repro gate$'
+stderr '^Next: run "lyceum approve spec" yourself in a terminal$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- login.go --
+package login
+-- login_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- TESTING-nosingle.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

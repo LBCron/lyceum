@@ -1,0 +1,48 @@
+# AC63: in a repo with no tests, lyceum test reports zero tests found and records no passing run
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+
+# No file matches test_files: nothing runs, nothing is recorded.
+exec sh -c 'lyceum test; echo "exit=$?"'
+stdout '^exit=2$'
+! stdout '^t.sh ran'
+stderr '^Can''t run tests: 0 tests found: no file matches test_files in TESTING.md \(\*\*/\*_test\.sh\)$'
+stderr '^Next: write tests for the project \(on existing code, characterization tests that pin its current behaviour\), then run "lyceum test" again$'
+! exists .lyceum/runs
+
+# No test_files at all is no tests too.
+cp $WORK/TESTING-nofiles.md TESTING.md
+! exec lyceum test
+stderr '^Can''t run tests: 0 tests found: TESTING.md sets no test_files$'
+! exists .lyceum/runs
+
+# Once a test file exists, the suite runs.
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/a_test.sh a_test.sh
+exec lyceum test
+stdout '^t.sh ran$'
+exists .lyceum/runs
+
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- TESTING-nofiles.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+---
+
+# TESTING.md

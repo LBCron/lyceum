@@ -1,0 +1,48 @@
+# AC166: given approve project covering lyceum/SPEC.md and a feat that updates a registry range before its approve spec, when approve spec runs, then the event hashes lyceum/SPEC.md, and when check --ci runs, then no approval-integrity finding names it
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add feat 'CSV export'
+cp $WORK/spec-index2.md lyceum/SPEC.md
+exec git add -A
+exec git commit -q -m 'registry range'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '"type":"approve","unit":"6ae678-csv-export",.*"gate":"spec","hashes":\{.*"lyceum/SPEC.md":"sha256:' lyceum/events.jsonl
+
+exec lyceum check --ci
+! stdout 'SPEC.md'
+stdout '^No findings$'
+
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+-- spec-index2.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | AC1 |
+-- orders.md --
+# Orders
+-- project.txt --
+project
+-- spec.txt --
+spec

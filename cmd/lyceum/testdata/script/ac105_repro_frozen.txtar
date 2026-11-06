@@ -1,0 +1,117 @@
+# AC105: Given repro cleared, when login_test.go changes afterwards without owner approval, then verify does not clear
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+
+# The repro test fails on the unfixed code: repro clears and fingerprints it.
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+
+# The fix, with the repro test edited too: the suite passes, but verify does not clear and names the file.
+cp $WORK/login-fixed.sh src/login.sh
+cp $WORK/login_test-edited.sh src/login_test.sh
+exec git commit -q -am 'fix, and edit the repro test'
+exec lyceum test
+stdout '^Passed: sh ./t.sh exited 0 after \S+$'
+stdout '^Not cleared: verify: these repro test files changed since repro cleared, and a change to a repro test needs the owner''s approval: src/login_test.sh$'
+stdout '^Gate: diagnose$'
+stdout '^Next: restore them as they were when repro cleared: git checkout [0-9a-f]{7,} -- src/login_test.sh, commit, then run "lyceum test"; or the owner approves the change: run "lyceum approve tests" yourself in a terminal, then run "lyceum test"$'
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+stdout '^1$'
+grep '^gate: diagnose$' lyceum/plan/6ae678-login-plus.md
+
+# Someone other than the owner approves the change: recorded with counts false, and verify still does not clear.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+exec git config user.email other@example.com
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=2$'
+stderr 'your approval was recorded, but it does not count'
+grep '"type":"approve","unit":"6ae678-login-plus",.*"counts":false,"gate":"tests"' lyceum/events.jsonl
+exec git config user.email owner@example.com
+exec lyceum test
+stdout '^Not cleared: verify: these repro test files changed since repro cleared, and a change to a repro test needs the owner''s approval: src/login_test.sh$'
+
+# The owner approves it: the summary shows the diff since the fingerprint, the event hashes the file,
+# the plan mirrors it, and the gate does not move.
+sha256file src/login_test.sh
+cp stdout $WORK/edited.txt
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+stderr '^Gate: tests$'
+stderr '^  src/login_test.sh sha256:[0-9a-f]{64}$'
+stderr '^Changes since the fingerprint \(commit [0-9a-f]{7,}\):$'
+stderr '^\+# TestLoginPlus, edited after repro$'
+stderr 'Type the gate name to approve \(tests\): '
+grep 'Approved tests for 6ae678-login-plus' $WORK/tty.out
+exec sh -c 'grep "\"counts\":true,\"gate\":\"tests\"" lyceum/events.jsonl | grep -cF "\"hashes\":{\"src/login_test.sh\":\"$(cat $WORK/edited.txt)\"}"'
+stdout '^1$'
+grep '^gate: diagnose$' lyceum/plan/6ae678-login-plus.md
+grep '^  - gate: tests$' lyceum/plan/6ae678-login-plus.md
+exec git log -1 --format=%s
+stdout '^lyceum: approve tests 6ae678-login-plus$'
+exec git status --porcelain
+! stdout .
+
+# Nothing else to approve now.
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=0$'
+grep 'Nothing to approve: every fingerprinted test file matches its fingerprint or its latest approved hash' $WORK/tty.out
+
+# With the change approved, the passing suite clears verify from diagnose, and the bug moves to cause, implemented.
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+stdout '^Gate: cause$'
+stdout '^Next: run "lyceum approve cause" yourself in a terminal$'
+grep '^gate: cause$' lyceum/plan/6ae678-login-plus.md
+grep '^status: implemented$' lyceum/plan/6ae678-login-plus.md
+grep '"type":"gate-clear","unit":"6ae678-login-plus",.*"gate":"verify","run":\{.*"subset":null,.*"exit":0,.*\},"status":"implemented"\}$' lyceum/events.jsonl
+
+# At cause, approve tests is refused and names the gate.
+ttyrun $WORK/tests.txt 'lyceum approve tests'
+stdout '^exit=2$'
+stderr '^Can''t approve tests: unit 6ae678-login-plus is a bug at gate cause; approve tests is for a bug after repro clears and before cause, or a refactor at baseline, build or verify$'
+
+# The log replays the approvals and the clear: the one failing finding is the approve cause still to come (AC102).
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: cause: '
+
+-- testing.txt --
+testing
+-- tests.txt --
+tests
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- login_test-edited.sh --
+# TestLoginPlus, edited after repro
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

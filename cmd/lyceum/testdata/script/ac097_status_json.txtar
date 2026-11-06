@@ -1,0 +1,38 @@
+# AC97: given status --json, then the output is one valid JSON object with a units array
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# No units yet: an empty units array, and nothing pending.
+exec lyceum status --json
+jsonobject
+stdout '^\{"ok":true,"unit":null,"gate":null,"next":"finish the project interview with your agent''s lyceum-init skill, then run \\"lyceum approve project\\" yourself in a terminal","data":\{"units":\[\],"pending":\[\],"repo_gates":\[\{"gate":"project","state":"pending"\}\],"records":\[\],"records_fresh":0\}\}$'
+! stderr .
+
+# Two units, the current one at spec, and an unapproved TESTING.md: both gates are pending.
+exec git switch -q -c side
+exec lyceum add doc 'Guide'
+exec git switch -q main
+exec lyceum add feat 'CSV export'
+cp $WORK/testing.md TESTING.md
+exec git add TESTING.md
+exec git commit -q -m 'draft TESTING.md'
+exec lyceum status --json
+jsonobject
+cmp stdout $WORK/want.json
+! stderr .
+
+# The global flag works before the command too.
+exec lyceum --json status
+cmp stdout $WORK/want.json
+
+-- testing.md --
+---
+lyceum: 1
+suite: go test ./...
+---
+
+# TESTING.md
+-- want.json --
+{"ok":true,"unit":"3f4fbd-csv-export","gate":"spec","next":"run \"lyceum approve spec\" yourself in a terminal","data":{"units":[{"id":"3f4fbd-csv-export","type":"feat","branch":"feat/3f4fbd-csv-export","status":"planned","gate":"spec","last_cleared":null,"next":"run \"lyceum approve spec\" yourself in a terminal","current":true},{"id":"6ae678-guide","type":"doc","branch":"docs/6ae678-guide","status":"in-progress","gate":"draft","last_cleared":null,"next":"finish the draft work described in the plan","current":false}],"pending":[{"gate":"spec","unit":"3f4fbd-csv-export","next":"run \"lyceum approve spec\" yourself in a terminal"},{"gate":"testing","unit":"","next":"run \"lyceum approve testing\" yourself in a terminal"}],"repo_gates":[{"gate":"project","state":"pending"},{"gate":"testing","state":"pending"}],"records":[],"records_fresh":0}}

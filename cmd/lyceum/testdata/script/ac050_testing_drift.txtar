@@ -1,0 +1,78 @@
+# AC50: Given TESTING.md edited after approval, when a mechanical gate would clear, then it does not clear and `check` names TESTING.md.
+# check fails when TESTING.md changed since its last counting approval while a mechanical gate of the unit relies on it, with one finding: the drift, not also the testing approval.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add feat 'CSV export'
+
+# At spec nothing mechanical relies on it yet: only the approval itself no longer matches.
+cp $WORK/TESTING2.md TESTING.md
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"check":"approval-integrity"'
+! stdout '"check":"testing"'
+cp $WORK/TESTING.md TESTING.md
+
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# At build, verify is next and relies on TESTING.md: an edit is a failing finding.
+cp $WORK/TESTING2.md TESTING.md
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr ': 1 failing finding:$'
+stderr '^  fail: testing: TESTING.md changed since its last approval, and the verify gate relies on it$'
+stderr '^Next: the owner runs "lyceum approve testing" in a terminal, or restore TESTING.md \(git log -p -- TESTING.md shows the edits\)$'
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '\{"check":"testing","severity":"fail","message":"TESTING.md changed since its last approval, and the verify gate relies on it","unit":"6ae678-csv-export","path":"TESTING.md",'
+! stdout '"check":"approval-integrity"'
+stdout '"findings":\[\{[^{}]*\}\]'
+
+# Locally it warns; committed, it is a pending re-approval, so no bypass event even at commit time (AC171).
+exec git commit -q -am 'edit TESTING.md'
+exec lyceum check --pre-commit
+stdout '^fail: testing: TESTING.md changed since its last approval, and the verify gate relies on it$'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Re-approved by the owner: no finding.
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+stdout '^No findings$'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+echo t.sh ran
+-- a_test.sh --
+# a test
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- TESTING2.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+
+Edited after the approval.

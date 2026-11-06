@@ -1,0 +1,43 @@
+# AC22: given an add bug at repro, when the new test passes at HEAD, with a branch diff that touches only test files, then repro does not clear and the output says the test does not reproduce the bug
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+exec lyceum add bug 'Login plus'
+mkdir src
+cp $WORK/pass_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+
+exec lyceum test --repro TestLoginPlus
+stdout '^Not cleared: repro: test TestLoginPlus passed, so it does not reproduce the bug; '
+stdout '^Gate: repro$'
+! grep '"type":"gate-clear"' lyceum/events.jsonl
+grep '^gate: repro$' lyceum/plan/6ae678-login-plus.md
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- pass_test.sh --
+# TestLoginPlus
+echo "ok $1"
+-- fail_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

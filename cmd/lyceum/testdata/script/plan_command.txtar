@@ -1,0 +1,104 @@
+# lyceum plan shows the current unit's plan; --new-area registers an area after listing the registered ones.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# No open unit on this branch: nothing to show.
+! exec lyceum plan
+stderr '^Can''t show the plan: this branch has no open unit, so there is no plan to show$'
+stderr '^Next: \S'
+
+# --new-area lists the registered areas, adds a registry row and the area file, and commits both.
+exec lyceum plan --new-area orders
+stdout '^Registered areas: none$'
+stdout '^Registered area orders in lyceum/SPEC.md$'
+stdout '^Created lyceum/spec/orders.md$'
+stdout '\nNext: write the spec of area orders in lyceum/spec/orders.md\n$'
+! stdout 'approve project'
+grep '^\| orders \| `spec/orders.md` \| \| \|$' lyceum/SPEC.md
+cmp lyceum/spec/orders.md $WORK/want-orders.md
+exec git log -1 --format=%s
+stdout '^lyceum: new area orders$'
+exec git status --porcelain
+! stdout .
+
+# The next one goes after it; the list names orders.
+exec lyceum plan --new-area billing --json
+jsonobject
+stdout '^\{"ok":true,"unit":null,"gate":null,"next":"write the spec of area billing in lyceum/spec/billing.md","data":\{"area":"billing","file":"lyceum/spec/billing.md","registered":\["orders"\],"reapprove_project":false\}\}$'
+exec sh -c 'grep -A3 "^|---" lyceum/SPEC.md'
+cmp stdout $WORK/want-rows.txt
+
+# An existing name, or one that is not a slug, is refused.
+! exec lyceum plan --new-area orders
+stdout '^Registered areas: orders, billing$'
+stderr '^Can''t add an area: area orders is already registered in lyceum/SPEC.md$'
+! exec lyceum plan --new-area 'Big Area'
+stderr '^Can''t add an area: area name "Big Area" must be lowercase letters, digits and single dashes, at most 40 characters$'
+mkdir lyceum/spec
+cp $WORK/want-orders.md lyceum/spec/stray.md
+rm lyceum/spec/stray.md
+
+# With a counting project approval, a new area changes the approved registry: it says so, and check reports it.
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum plan --new-area payments
+stdout '^lyceum/SPEC.md changed since the project approval: check reports it until the owner runs "lyceum approve project" in a terminal$'
+! exec lyceum check --ci
+stderr 'the project approval no longer matches lyceum/SPEC.md'
+
+# Show: path, type, status, areas, files, ACs, the body, then unit, gate and next.
+exec lyceum add feat 'CSV export'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'draft spec'
+exec lyceum plan
+cmp stdout $WORK/want-show.txt
+exec lyceum plan --json
+jsonobject
+stdout '^\{"ok":true,"unit":"6ae678-csv-export","gate":"spec","next":"run \\"lyceum approve spec\\" yourself in a terminal","data":\{"plan":"lyceum/plan/6ae678-csv-export.md","frontmatter":\{"acs":\["AC1"\],"approvals":\[\],"areas":\["orders"\],"branch":"feat/6ae678-csv-export","files":\["src/export.go"\],"gate":"spec","id":"6ae678-csv-export","status":"planned","title":"CSV export","type":"feat"\}\}\}$'
+
+# A unit's ending names it.
+exec lyceum plan --new-area shipping
+stdout '^Unit: 6ae678-csv-export$'
+
+-- project.txt --
+project
+-- want-orders.md --
+# orders
+-- want-rows.txt --
+|---|---|---|---|
+| orders | `spec/orders.md` | | |
+| billing | `spec/billing.md` | | |
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+areas: [orders]
+files: [src/export.go]
+acs: [AC1]
+approvals: []
+---
+
+## What and why
+
+Export orders as CSV.
+-- want-show.txt --
+Plan: lyceum/plan/6ae678-csv-export.md
+Type: feat
+Status: planned
+Areas: orders
+Files: src/export.go
+ACs: AC1
+
+## What and why
+
+Export orders as CSV.
+Unit: 6ae678-csv-export
+Gate: spec
+Next: run "lyceum approve spec" yourself in a terminal

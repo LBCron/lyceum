@@ -1,0 +1,80 @@
+# distribution.md "lyceum init" step 4: wiring Claude Code adds a short pointer to AGENTS.md in CLAUDE.md,
+# between the markers and under the same ask-before-appending rule as AGENTS.md. The pointer only points and
+# restates no rule, approve included.
+
+# Claude Code not wired: no CLAUDE.md.
+cd $REPO
+exec lyceum init
+! exists CLAUDE.md
+exec lyceum init --harness codex
+! exists CLAUDE.md
+! stderr 'CLAUDE\.md'
+
+# Wired, no CLAUDE.md: it is created with the pointer.
+exec git init -q -b main $WORK/fresh
+exec git -C $WORK/fresh config user.email owner@example.com
+cd $WORK/fresh
+exec lyceum init --harness claude
+stdout '^Created CLAUDE\.md$'
+! stderr 'CLAUDE\.md'
+exec sh -c '{ printf "# CLAUDE.md\n\n"; cat $TEMPLATES/claude.md; } > $WORK/want-fresh.md'
+cmp CLAUDE.md $WORK/want-fresh.md
+grep '^Read AGENTS\.md; this project uses Lyceum\. Run `lyceum status` first\.$' CLAUDE.md
+! grep 'approve' CLAUDE.md
+
+# Re-run (Claude Code is already wired): unchanged, no prompt.
+exec lyceum init
+! stdout 'CLAUDE\.md'
+! stderr 'CLAUDE\.md'
+cmp CLAUDE.md $WORK/want-fresh.md
+
+# A stale pointer between the markers (the older one that restated the approve rule) is replaced
+# without asking; the bytes outside them are kept.
+exec sh -c 'cat $WORK/before.md $WORK/old-section.md $WORK/after.md > CLAUDE.md'
+exec lyceum init
+stdout '^Updated CLAUDE\.md$'
+! stderr 'CLAUDE\.md'
+exec sh -c 'cat $WORK/before.md $TEMPLATES/claude.md $WORK/after.md > $WORK/want-replaced.md'
+cmp CLAUDE.md $WORK/want-replaced.md
+! grep 'approve' CLAUDE.md
+
+# CLAUDE.md without markers: the pointer is shown and appended only after the user confirms.
+exec git init -q -b main $WORK/own
+exec git -C $WORK/own config user.email owner@example.com
+cd $WORK/own
+cp $WORK/before.md CLAUDE.md
+stdin $WORK/no.txt
+exec lyceum init --harness claude
+stderr '^Read AGENTS\.md; this project uses Lyceum'
+stderr 'Append this Lyceum section to CLAUDE\.md\? \[y/N\] '
+stdout '^Skipped the Lyceum section in CLAUDE\.md; run "lyceum init" again to add it$'
+cmp CLAUDE.md $WORK/before.md
+
+# No answer at all (closed stdin) is a no too.
+exec lyceum init
+cmp CLAUDE.md $WORK/before.md
+
+stdin $WORK/yes.txt
+exec lyceum init
+stdout '^Updated CLAUDE\.md$'
+exec sh -c '{ cat $WORK/before.md; echo; cat $TEMPLATES/claude.md; } > $WORK/want-own.md'
+cmp CLAUDE.md $WORK/want-own.md
+
+-- before.md --
+# My project
+
+Use make.
+-- old-section.md --
+<!-- lyceum:start -->
+## Lyceum
+
+Read AGENTS.md; this project uses Lyceum, a spec-driven lifecycle for agentic coding.
+AGENTS.md holds the rules and the loading policy. Run `lyceum status` first, and never run `lyceum approve`.
+<!-- lyceum:end -->
+-- after.md --
+
+Keep this.
+-- no.txt --
+n
+-- yes.txt --
+y

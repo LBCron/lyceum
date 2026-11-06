@@ -1,0 +1,46 @@
+# AC73: given a record created on a unit branch that was then squash-merged and the branch deleted, when freshness is computed on main, then it still resolves (no dependency on the old commit)
+cd $REPO
+exec lyceum init
+mkdir src lyceum/understand
+cp $WORK/a.ts src/a.ts
+exec git add -A
+exec git commit -q -m 'lyceum init and code'
+
+# On a unit branch, the code changes and a record of it is made.
+exec lyceum add feat 'Payments'
+cp $WORK/a2.ts src/a.ts
+mkdir src/pay
+cp $WORK/service.ts src/pay/service.ts
+cp $WORK/record.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+stdout '^Recorded lyceum/understand/6ae678-payments.md$'
+exec git add src
+exec git commit -q -m 'payments'
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+# Squash-merged into main, the branch deleted and its commits pruned: still fresh on main.
+exec git switch -q main
+exec git merge -q --squash feat/6ae678-payments
+exec git commit -q -m 'Payments (squashed)'
+exec git branch -q -D feat/6ae678-payments
+exec git reflog expire --expire=now --all
+exec git gc -q --prune=now
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+! stdout '^  (drifted|broken|invalid) '
+
+-- a.ts --
+export const a = 1
+-- a2.ts --
+export const a = 2
+-- service.ts --
+export function pay() {}
+-- record.md --
+---
+kind: understand
+title: Payments
+cites:
+  - path: src/a.ts
+  - path: src/pay/
+---

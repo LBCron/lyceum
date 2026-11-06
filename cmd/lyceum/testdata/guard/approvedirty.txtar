@@ -1,0 +1,40 @@
+# Guard approvedirty: with the dirty-tree check off, the attack of ac044_dirty_tree_at_code_gate.txtar approves.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/a.go src/a.go
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+
+# At plan, the code-opening gate, with src/a.go changed and src/b.go new.
+exec sh -c 'echo "// edited" >> src/a.go'
+cp $WORK/a.go src/b.go
+ttyrun $WORK/plan.txt 'lyceum approve plan'
+stdout '^exit=0$'
+! stderr 'have changes made before'
+grep '^Approved plan for aaaaaa-tidy' $WORK/tty.out
+grep -count=1 '"type":"approve"' lyceum/events.jsonl
+grep '^gate: build$' lyceum/plan/aaaaaa-tidy.md
+
+-- plan.txt --
+plan
+-- a.go --
+package src
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: plan
+approvals: []
+---
+
+## What and why

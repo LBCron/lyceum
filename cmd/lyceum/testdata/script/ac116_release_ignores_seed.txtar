@@ -1,0 +1,53 @@
+# AC116: a release build ignores LYCEUM_SEED: the same seed gives different unit hashes, while the test build repeats them
+# setupScript sets LYCEUM_SEED=1.
+exec git init -q -b main $WORK/r1
+exec git init -q -b main $WORK/r2
+exec git init -q -b main $WORK/t1
+exec git init -q -b main $WORK/t2
+exec git -C $WORK/r1 config user.email owner@example.com
+exec git -C $WORK/r2 config user.email owner@example.com
+exec git -C $WORK/t1 config user.email owner@example.com
+exec git -C $WORK/t2 config user.email owner@example.com
+exec git -C $WORK/r1 config user.name 'Test Owner'
+exec git -C $WORK/r2 config user.name 'Test Owner'
+exec git -C $WORK/t1 config user.name 'Test Owner'
+exec git -C $WORK/t2 config user.name 'Test Owner'
+
+cd $WORK/r1
+exec lyceum-release init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum-release add feat 'CSV export'
+exec git branch --show-current
+cp stdout $WORK/r1.txt
+
+cd $WORK/r2
+exec lyceum-release init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum-release add feat 'CSV export'
+exec git branch --show-current
+cp stdout $WORK/r2.txt
+
+cd $WORK/t1
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+exec git branch --show-current
+cp stdout $WORK/t1.txt
+
+cd $WORK/t2
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+exec git branch --show-current
+cp stdout $WORK/t2.txt
+
+# Release: different hashes. Test build: the seeded one, twice.
+grep '^feat/[0-9a-f]{6}-csv-export$' $WORK/r1.txt
+grep '^feat/[0-9a-f]{6}-csv-export$' $WORK/r2.txt
+! exec git diff --no-index --quiet $WORK/r1.txt $WORK/r2.txt
+grep '^feat/6ae678-csv-export$' $WORK/t1.txt
+cmp $WORK/t1.txt $WORK/t2.txt

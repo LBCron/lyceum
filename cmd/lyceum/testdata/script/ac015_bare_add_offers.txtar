@@ -1,0 +1,34 @@
+# AC15: given bare lyceum add, when it runs interactively, then it offers exactly feat, bug, doc, test
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# An answer that is no type: refused, nothing added.
+ttyin -stdin $WORK/nope.txt
+exec sh -c 'lyceum add >/dev/tty; echo "exit=$?"'
+stderr 'Add which type\? feat, bug, doc or test: '
+stderr 'unknown unit type "refactor"; the types are feat, bug, doc and test'
+stdout '^exit=2$'
+! exists lyceum/plan
+
+# A type and a title: the unit starts.
+ttyin -stdin $WORK/doc.txt
+exec sh -c 'lyceum add >/dev/tty; echo "exit=$?"'
+stderr 'Title: '
+stdout '^exit=0$'
+exists lyceum/plan/6ae678-guide.md
+grep '^type: doc$' lyceum/plan/6ae678-guide.md
+
+# Not a terminal: a refusal with no prompt.
+exec git switch -q main
+! exec lyceum add
+! stderr 'Add which type'
+stderr 'no unit type given'
+
+-- nope.txt --
+refactor
+-- doc.txt --
+doc
+Guide

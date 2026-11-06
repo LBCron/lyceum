@@ -1,0 +1,37 @@
+# AC154: given lyceum/spec/billing.md exists and no registry row names it, when plan --new-area billing runs, then the row is added, the file is unchanged, and the command does not refuse
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/billing.md lyceum/spec/billing.md
+exec git add -A
+exec git commit -q -m 'lyceum init and an area file'
+exec lyceum add feat 'Billing'
+
+exec lyceum plan --new-area billing
+stdout '^Registered areas: none$'
+stdout '^Registered area billing in lyceum/SPEC.md$'
+stdout '^Adopted lyceum/spec/billing.md$'
+stdout '^Next: name billing in areas: in the plan$'
+cmp lyceum/spec/billing.md $WORK/billing.md
+grep '^\| billing \| `spec/billing.md` \| \| \|$' lyceum/SPEC.md
+exec git log -1 --format=%s
+stdout '^lyceum: new area billing$'
+exec git status --porcelain
+! stdout .
+
+# A file not yet committed is adopted and committed as it stands.
+cp $WORK/billing.md lyceum/spec/orders.md
+exec lyceum plan --new-area orders
+stdout '^Adopted lyceum/spec/orders.md$'
+cmp lyceum/spec/orders.md $WORK/billing.md
+exec git status --porcelain
+! stdout .
+
+# Registered now: a second run is refused as before.
+! exec lyceum plan --new-area billing
+stderr '^Can''t add an area: area billing is already registered in lyceum/SPEC.md$'
+
+-- billing.md --
+# Billing
+
+Written before its registry row.

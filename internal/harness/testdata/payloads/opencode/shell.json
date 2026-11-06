@@ -1,0 +1,10 @@
+{
+  "tool": "shell",
+  "sessionID": "SESSION",
+  "agent": "build",
+  "messageID": "SESSION",
+  "id": "CALL",
+  "input": {
+    "command": "echo lyceum approve spec"
+  }
+}

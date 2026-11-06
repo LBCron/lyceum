@@ -1,0 +1,96 @@
+# AC125: given a unit whose last pre-close gate is not cleared, when close runs, then it refuses and names that gate
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# No unit on the base branch: nothing to close.
+! exec lyceum close
+stderr '^Can''t close the unit: this branch has no open unit, so there is nothing to close$'
+
+# A feat at spec: close names verify, the gate before close, and the next step is the spec approval.
+exec lyceum add feat 'CSV export'
+! exec lyceum close
+stderr '^Can''t close 6ae678-csv-export: unit 6ae678-csv-export is at gate spec, and close needs its verify gate cleared first$'
+stderr '^Next: run "lyceum approve spec" yourself in a terminal$'
+
+# A unit argument must name the branch's unit.
+! exec lyceum close 000000-other
+stderr '^Can''t close the unit: unit 000000-other is not the open unit on this branch, which is 6ae678-csv-export$'
+
+# At build, with code committed: still verify, after the build work.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+mkdir src
+cp $WORK/export.sh src/export.sh
+exec git add -A
+exec git commit -q -m 'export'
+! exec lyceum close 6ae678-csv-export
+stderr '^Can''t close 6ae678-csv-export: unit 6ae678-csv-export is at gate build, and close needs its verify gate cleared first$'
+stderr '^Next: finish the build work described in the plan, then run "lyceum test"$'
+
+# A gate: edited by hand to close is not a cleared gate: the plan disagrees with the event log.
+exec sh -c 'sed "s/^gate: build$/gate: close/" lyceum/plan/6ae678-csv-export.md > $WORK/plan.md'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'skip verify by hand'
+! exec lyceum close
+stderr '^Can''t close 6ae678-csv-export: 1 failing finding:$'
+stderr '^  fail: cli-fields: plan field gate is close, but the event log implies build$'
+! grep '"type":"close"' lyceum/events.jsonl
+grep '^status: in-progress$' lyceum/plan/6ae678-csv-export.md
+
+# A dirty tree refuses.
+exec git switch -q main
+exec lyceum chore 'Update readme'
+cp $WORK/README.md README.md
+! exec lyceum close
+stderr '^Can''t close 3f4fbd-update-readme: the working tree has uncommitted changes:$'
+stderr '^  README.md$'
+
+# A trivial chore's gate is check: a code change without an approved plan fails it, and close lists the finding.
+mkdir src
+cp $WORK/export.sh src/export.sh
+exec git add -A
+exec git commit -q -m 'readme and code'
+! exec lyceum close
+stderr '^Can''t close 3f4fbd-update-readme: 1 failing finding:$'
+stderr '^  fail: chore: the chore changes code, a manifest, a lockfile or CI config without an approved plan: src/export.sh$'
+stderr '^Next: move the chore to its planned tier with "lyceum plan"'
+! grep '"type":"close"' lyceum/events.jsonl
+
+# Docs only: check passes, and the trivial chore closes from build.
+exec git rm -q src/export.sh
+exec git commit -q -m 'docs only'
+exec lyceum close
+stdout '^Closed 3f4fbd-update-readme$'
+grep '^gate: close$' lyceum/plan/3f4fbd-update-readme.md
+grep '^status: closed$' lyceum/plan/3f4fbd-update-readme.md
+grep -count=1 '"type":"close","unit":"3f4fbd-update-readme",.*"status":"closed"' lyceum/events.jsonl
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- t.sh --
+true
+-- export.sh --
+echo "id,total"
+-- README.md --
+# App
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

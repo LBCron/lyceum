@@ -1,0 +1,8 @@
+# AC180: given no TESTING.md, when lyceum test prints the schema, then its Go suggestion is go test -count=1 ./...
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+! exec lyceum test
+stderr '^suite: go test -count=1 \./\.\.\.$'
+! stderr 'go test \./\.\.\.'

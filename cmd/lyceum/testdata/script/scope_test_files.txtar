@@ -1,0 +1,53 @@
+# the scope warning ignores changed files matching TESTING.md test_files, so a bug's repro
+# test outside the plan's files: list raises no scope warning; a code file outside it still does.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+linesub lyceum/plan/6ae678-login-plus.md lyceum/plan/6ae678-login-plus.md 'type: bug' 'type: bug\nfiles: [src/login.sh]'
+grep '^files: \[src/login.sh\]$' lyceum/plan/6ae678-login-plus.md
+
+# The repro test, outside files:, fails and clears repro: no scope warning.
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+exec lyceum check
+! stdout 'scope'
+stdout '^No findings$'
+
+# A code file outside files: is still a scope warning, naming only it.
+cp $WORK/login.sh src/extra.sh
+exec git add -A
+exec git commit -q -m 'extra code'
+exec lyceum check
+stdout '^warn: scope: the branch changes code outside the plan''s files: list: src/extra.sh$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- login.sh --
+login_plus() { echo wrong; }
+-- login_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

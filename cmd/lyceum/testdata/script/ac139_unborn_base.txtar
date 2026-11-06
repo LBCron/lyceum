@@ -1,0 +1,42 @@
+# AC139: given a repo whose base branch is unborn (no commits yet), when check runs, then it treats the base as empty and reports findings, never the missing-base refusal
+exec git init -q -b main $WORK/new
+exec git -C $WORK/new config user.email owner@example.com
+exec git -C $WORK/new config user.name 'Test Owner'
+cd $WORK/new
+exec lyceum init
+
+# On the unborn base branch itself: no branch diff, so no finding and no refusal.
+! exec git rev-parse -q --verify HEAD
+exec lyceum check
+stdout '^No findings$'
+! stderr 'is missing'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# On another unborn branch the base is empty, so everything is the branch's diff: a code file is a finding.
+cp $WORK/config.yaml lyceum/config.yaml
+exec git switch -q -c work
+cp $WORK/app.go app.go
+exec lyceum check
+stdout 'app\.go'
+stdout '^  to fix: '
+! stdout '^No findings$'
+! stderr 'is missing'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'app\.go'
+! stderr 'is missing'
+
+# A base branch that is missing once the repo has commits is still refused.
+exec git add -A
+exec git commit -q --no-verify -m first
+exec sh -c 'lyceum check; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'the base branch main is missing'
+
+-- config.yaml --
+lyceum: 1
+owner: owner@example.com
+base_branch: main
+-- app.go --
+package main

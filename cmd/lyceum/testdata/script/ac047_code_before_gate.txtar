@@ -1,0 +1,82 @@
+# AC47: given a feat at gate spec and a diff touching src/, when check runs locally, then it warns, writes a bypass event and exits 0; with --ci it exits non-zero
+# The branch diff is the commits since the merge base with base_branch plus uncommitted changes.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# Docs and lyceum/ files are not code: no finding before the gate either.
+mkdir docs
+cp $WORK/a.go docs/x.md
+exec git add docs/x.md
+exec git commit -q -m 'docs'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# An uncommitted src/a.go is in the diff.
+mkdir src
+cp $WORK/a.go src/a.go
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: gate-before-code: the branch changes code before the spec gate is cleared: src/a.go$'
+
+# Committed, locally: exit 0, the finding and the scope warning are printed, one bypass event is written.
+exec git add src/a.go
+exec git commit -q -m 'code before the spec gate'
+exec lyceum check --pre-commit
+stdout '^fail: gate-before-code: the branch changes code before the spec gate is cleared: src/a.go$'
+stdout '^  to fix: the owner runs "lyceum approve spec" in a terminal to clear the gate, or take the code changes off this branch$'
+stdout '^warn: scope: the branch changes code outside the plan''s files: list: src/a.go$'
+stdout '^Wrote 1 bypass event to lyceum/events.jsonl$'
+! stderr .
+grep -count=1 '"type":"bypass"' lyceum/events.jsonl
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"bypass","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]{7,}","check":"gate-before-code","message":"the branch changes code before the spec gate is cleared: src/a.go"\}$' lyceum/events.jsonl
+
+# In CI: exit 2 naming the gate-before-code finding; the scope warning does not fail it; no event written.
+cp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t pass check --ci: 1 failing finding:$'
+stderr '^  fail: gate-before-code: the branch changes code before the spec gate is cleared: src/a.go$'
+stderr '^Next: the owner runs "lyceum approve spec" in a terminal to clear the gate, or take the code changes off this branch$'
+! stderr 'scope'
+cmp lyceum/events.jsonl $WORK/events-before-ci.jsonl
+exec sh -c 'lyceum check --ci --json; echo "exit=$?"'
+stdout '"findings":\[\{"check":"gate-before-code","severity":"fail","message":"the branch changes code before the spec gate is cleared: src/a.go","unit":"6ae678-csv-export",.*\},\{"check":"scope","severity":"warn",.*\}\]\}$'
+stdout '^exit=2$'
+
+# A fresh unit: spec approved on a clean tree, then src/a.go committed. The gate
+# is cleared, so no gate-before-code finding; src/a.go is not in files:, so a
+# scope warning only, and check --ci exits 0.
+exec git commit -q -am 'record bypass'
+exec git switch -q main
+exec lyceum add feat 'Second'
+stdout '^Unit: 3f4fbd-second$'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+mkdir src
+cp $WORK/a.go src/a.go
+exec git add src/a.go
+exec git commit -q -m 'code after the spec gate'
+exec lyceum check --ci
+cmp stdout $WORK/want-scope.txt
+! stderr .
+exec lyceum check --ci --json
+stdout '"findings":\[\{"check":"scope","severity":"warn","message":"the branch changes code outside the plan''s files: list: src/a.go","unit":"3f4fbd-second","path":"lyceum/plan/3f4fbd-second.md","field":"files",[^]]*\}\]\}$'
+! stdout 'gate-before-code'
+exec lyceum check --pre-commit
+cmp stdout $WORK/want-scope.txt
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+-- spec.txt --
+spec
+-- a.go --
+package a
+-- want-scope.txt --
+warn: scope: the branch changes code outside the plan's files: list: src/a.go
+  to fix: add them to files: in lyceum/plan/3f4fbd-second.md; the owner approves it at the next stop
+Unit: 3f4fbd-second
+Gate: build
+Next: fix the findings, then run "lyceum check" again

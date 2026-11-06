@@ -1,0 +1,54 @@
+# log --since keeps entries from a date on; --type keeps one event type and drops commits.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'set up'
+env LYCEUM_NOW=2026-03-02T09:00:00Z GIT_COMMITTER_DATE=2026-03-02T09:00:00Z
+exec lyceum add feat 'CSV export'
+mkdir src
+cp $WORK/a.go src/a.go
+exec git add src/a.go
+env GIT_COMMITTER_DATE=2026-03-03T10:00:00Z
+exec git commit -q -m 'write the exporter'
+env LYCEUM_NOW=2026-03-03T11:00:00Z
+exec lyceum check --pre-commit
+
+# --since is a UTC date: entries at or after its midnight.
+exec lyceum log --since 2026-03-03
+stdout -count=2 '^2026-'
+stdout '^2026-03-03T10:00:00Z +commit +6ae678-csv-export +[0-9a-f]{7} write the exporter$'
+stdout '^2026-03-03T11:00:00Z +bypass '
+exec lyceum log --since 2026-03-02
+stdout -count=3 '^2026-'
+exec lyceum log --since 2026-03-04
+cmp stdout $WORK/want-none.txt
+
+# --type: only that event type, no commits.
+exec lyceum log --type add
+stdout -count=1 '^2026-'
+stdout '^2026-03-02T09:00:00Z +add +6ae678-csv-export '
+exec lyceum log --type bypass --since 2026-03-03 --unit 6ae678-csv-export --json
+jsonobject
+stdout '"entries":\[\{"ts":"2026-03-03T11:00:00Z","kind":"bypass","unit":"6ae678-csv-export",[^]]*\}\]'
+exec lyceum log --type nope --json
+stdout '"entries":\[\]'
+
+# A --since that is not a date is a refusal.
+! exec lyceum log --since 03/02/2026
+stderr '^Can''t show the log: --since "03/02/2026" is not a date in the form YYYY-MM-DD$'
+stderr '^Next: run "lyceum log --since 2026-01-31"$'
+
+# A repo with no commits and no events has no entries.
+exec git init -q -b main $WORK/empty
+cd $WORK/empty
+exec git config user.email owner@example.com
+exec lyceum init
+exec lyceum log
+cmp stdout $WORK/want-none.txt
+! stderr .
+
+-- want-none.txt --
+No entries.
+Next: run "lyceum status"
+-- a.go --
+package a

@@ -1,0 +1,113 @@
+# AC78: given trace full-run with an environment defined, then the side effects are shown and nothing runs until the user confirms, and every command run is recorded
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+mkdir scripts
+cp $WORK/step.sh scripts/step.sh
+exec git add -A
+exec git commit -q -m 'lyceum init and testing'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# The trigger is required.
+! exec lyceum trace --run test 'how is an order placed?'
+stderr '^Can''t run the trace: a full run needs the command that triggers the flow: --trigger is missing$'
+
+# Without --yes: every command is shown, in order, with its side effects, and nothing runs.
+exec lyceum trace --run test --trigger 'sh scripts/step.sh trigger' 'how is an order placed?'
+cmp stdout $WORK/want-plan.txt
+! exists steps.log
+! exists .lyceum/traces
+exec lyceum trace --json --run test --trigger 'sh scripts/step.sh trigger' 'how is an order placed?'
+jsonobject
+stdout '"data":\{"env":"test","url":"http://localhost:8080","steps":\[\{"step":"up","command":"sh scripts/step.sh up","exit":0,"timed_out":false,"duration_ms":0\},'
+stdout '"ran":false'
+! exists steps.log
+
+# With --yes, after the user confirmed: each command runs in order, and each is recorded
+# with its exit, duration and output file.
+exec lyceum trace --run test --trigger 'sh scripts/step.sh trigger' --yes 'how is an order placed?'
+cmp steps.log $WORK/want-steps.txt
+stdout '^step trigger$'
+stdout '^Recorded: .lyceum/traces/20260101T000000Z-[0-9a-f]{8}/run.json$'
+stdout '^- up: `sh scripts/step.sh up`: exit 0, \d+ ms, output .lyceum/traces/20260101T000000Z-[0-9a-f]{8}/up.out$'
+stdout '^- seed: `sh scripts/step.sh seed`: exit 0, '
+stdout '^- trigger: `sh scripts/step.sh trigger`: exit 0, '
+stdout '^- reset: `sh scripts/step.sh reset`: exit 0, '
+stdout '^- down: `sh scripts/step.sh down`: exit 0, '
+exec sh -c 'cat .lyceum/traces/*/run.json'
+stdout '^\{"ts":"2026-01-01T00:00:00Z","question":"how is an order placed\?","env":"test","url":"http://localhost:8080","commit":"[0-9a-f]{7,}","dirty":false,"testing_sha256":"sha256:[0-9a-f]{64}","steps":\[\{"step":"up","command":"sh scripts/step.sh up","exit":0,"timed_out":false,"duration_ms":\d+,"output":".lyceum/traces/[^"]+/up.out","output_sha256":"sha256:[0-9a-f]{64}"\},'
+exec sh -c 'cat .lyceum/traces/*/trigger.out'
+stdout '^step trigger$'
+
+# A failing trigger: reset and down still run, and the failure is recorded.
+rm steps.log
+exec lyceum trace --run test --trigger 'sh scripts/step.sh trigger; exit 3' --yes 'how is an order placed?'
+cmp steps.log $WORK/want-steps.txt
+stdout '^- trigger: `sh scripts/step.sh trigger; exit 3`: exit 3, '
+stdout '^- down: `sh scripts/step.sh down`: exit 0, '
+
+# A failing up: the trigger is skipped, reset and down still run.
+rm steps.log
+cp $WORK/TESTING-badup.md TESTING.md
+exec git commit -q -am 'up fails'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum trace --run test --trigger 'sh scripts/step.sh trigger' --yes 'how is an order placed?'
+cmp steps.log $WORK/want-badup.txt
+stdout '^- up: `sh scripts/step.sh up; exit 1`: exit 1, '
+stdout '^- trigger: `sh scripts/step.sh trigger`: skipped, an earlier step failed$'
+stdout '^- down: `sh scripts/step.sh down`: exit 0, '
+
+# The run logs are under the gitignored .lyceum/: git sees only what the commands wrote.
+exec git status --porcelain
+stdout '^\?\? steps.log$'
+stdout -count=1 '^.+$'
+
+-- testing.txt --
+testing
+-- step.sh --
+echo "step $1"
+echo "$1" >> steps.log
+-- TESTING.md --
+---
+lyceum: 1
+suite: true
+environments:
+  test:
+    url: http://localhost:8080
+    up: sh scripts/step.sh up
+    seed: sh scripts/step.sh seed
+    reset: sh scripts/step.sh reset
+    down: sh scripts/step.sh down
+---
+-- TESTING-badup.md --
+---
+lyceum: 1
+suite: true
+environments:
+  test:
+    up: sh scripts/step.sh up; exit 1
+    down: sh scripts/step.sh down
+---
+-- want-plan.txt --
+A full run against environment test (http://localhost:8080) will run, in order:
+  up: sh scripts/step.sh up
+  seed: sh scripts/step.sh seed
+  trigger: sh scripts/step.sh trigger
+  reset: sh scripts/step.sh reset
+  down: sh scripts/step.sh down
+Side effects: whatever these commands change in test; reset and down run even if an earlier command fails.
+Nothing ran: add --yes to run them.
+Next: tell the user these commands and their side effects and ask; when they agree, run: lyceum trace --run test --trigger 'sh scripts/step.sh trigger' --yes 'how is an order placed?'
+-- want-steps.txt --
+up
+seed
+trigger
+reset
+down
+-- want-badup.txt --
+up
+down

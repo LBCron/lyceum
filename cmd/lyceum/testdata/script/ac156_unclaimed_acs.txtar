@@ -1,0 +1,76 @@
+# AC156: given AC9 in an area file, no closed plan listing it in acs: and no LIBRARY.md entry naming it, when check --ci runs, then a warning names AC9 and the exit code is unaffected by it
+# AC150: an AC only in acs_partial: of a closed plan still counts as unclaimed.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec lyceum/plan
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+
+# Unclaimed: a warning, and exit 0, locally and in CI, with no bypass event.
+exec lyceum check --ci
+stdout '^warn: unclaimed-acs: no closed plan lists these ACs and no lyceum/LIBRARY\.md entry names them: AC9, AC9001, AC9002$'
+exec lyceum check --pre-commit
+stdout 'unclaimed-acs: .*AC9'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# A closed plan claiming one AC whole, with AC9 only in part: AC9 stays open.
+cp $WORK/closed.md lyceum/plan/aaaaaa-closed.md
+exec lyceum check --ci
+stdout 'names them: AC9, AC9002$'
+
+# An open plan listing an AC claims nothing yet.
+cp $WORK/open.md lyceum/plan/bbbbbb-open.md
+exec lyceum check --ci
+stdout 'names them: AC9, AC9002$'
+
+# A roadmap entry naming AC9 claims it.
+cp $WORK/library.md lyceum/LIBRARY.md
+exec lyceum check --ci
+stdout 'names them: AC9002$'
+
+# A withdrawn or deferred row is not reported.
+exec sh -c 'sed "s/^| AC9002 .*/| AC9002 | Withdrawn, D1 |/" lyceum/spec/orders.md > o.tmp && mv o.tmp lyceum/spec/orders.md'
+exec lyceum check --ci
+! stdout 'unclaimed-acs'
+
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | AC9, AC9001, AC9002 |
+-- orders.md --
+# Orders
+
+| ID | Criterion |
+|---|---|
+| AC9 | Given c, then d |
+| AC9001 | Given a, then b |
+| AC9002 | Given e, then f |
+-- closed.md --
+---
+id: aaaaaa-closed
+type: doc
+title: Closed
+branch: docs/aaaaaa-closed
+status: closed
+gate: close
+acs: [AC9001]
+acs_partial: [AC9]
+---
+-- open.md --
+---
+id: bbbbbb-open
+type: doc
+title: Open
+branch: docs/bbbbbb-open
+status: in-progress
+gate: draft
+acs: [AC9002]
+---
+-- library.md --
+- feat: Finish orders (AC9)

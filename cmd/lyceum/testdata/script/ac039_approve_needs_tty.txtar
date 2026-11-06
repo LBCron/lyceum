@@ -1,0 +1,81 @@
+# AC39: approve plan with stdin not a TTY exits non-zero and writes no event
+# A refactor at gate plan, so plan is the gate approve would clear.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c refactor/aaaaaa-tidy
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/aaaaaa-tidy.md
+exec git add -A
+exec git commit -q -m 'plan'
+cp lyceum/events.jsonl $WORK/events-before.jsonl
+
+# Neither stdin nor stdout is a terminal.
+exec sh -c 'lyceum approve plan; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve plan" yourself in a terminal$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/aaaaaa-tidy.md $WORK/plan.md
+
+# stdout is a terminal and the gate name is typed there, but stdin is piped.
+ttyrun $WORK/typed.txt 'echo plan | lyceum approve plan'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+! grep 'approval confirmed' $WORK/tty.out
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/aaaaaa-tidy.md $WORK/plan.md
+
+# stdin is a terminal, stdout is not.
+ttyin -stdin $WORK/typed.txt
+exec sh -c 'lyceum approve plan; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+cmp lyceum/plan/aaaaaa-tidy.md $WORK/plan.md
+
+# The TTY check comes before the gate check: a gate other than the current one,
+# with no terminal, gets the TTY refusal, not the gate refusal.
+! exec lyceum approve spec
+stderr '^Can''t approve spec: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+stderr '^Next: run "lyceum approve spec" yourself in a terminal$'
+! stderr 'is at gate plan'
+
+# A chore at plan is on the planned tier, where plan is a judgment gate, so it too reaches the TTY check.
+exec git switch -q -c chore/bbbbbb-tidy
+cp $WORK/chore.md lyceum/plan/bbbbbb-tidy.md
+exec sh -c 'lyceum approve plan; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve plan: stdin and stdout must both be a terminal; approval is for the owner, typed in their own terminal$'
+rm lyceum/plan/bbbbbb-tidy.md
+exec git switch -q refactor/aaaaaa-tidy
+
+exec git status --porcelain
+! stdout .
+cmp lyceum/events.jsonl $WORK/events-before.jsonl
+
+-- typed.txt --
+plan
+-- plan.md --
+---
+id: aaaaaa-tidy
+type: refactor
+title: Tidy
+branch: refactor/aaaaaa-tidy
+status: in-progress
+gate: plan
+approvals: []
+---
+
+## What and why
+-- chore.md --
+---
+id: bbbbbb-tidy
+type: chore
+title: Tidy
+branch: chore/bbbbbb-tidy
+status: in-progress
+gate: plan
+approvals: []
+---

@@ -1,0 +1,14 @@
+{
+  "sessionID": "SESSION",
+  "agent": "build",
+  "action": "shell",
+  "resources": [
+    "echo lyceum approve spec"
+  ],
+  "source": {
+    "type": "tool",
+    "messageID": "SESSION",
+    "id": "CALL"
+  },
+  "effect": "allow"
+}

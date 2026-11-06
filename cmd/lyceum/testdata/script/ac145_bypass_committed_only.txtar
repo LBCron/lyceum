@@ -1,0 +1,68 @@
+# AC145: given an approved area file edited and not committed, when local check runs, then the drift is reported and no bypass event is written; given a committed code change before the code-opening gate, then one is
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/orders.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Uncommitted drift of an approved file: reported, no bypass event.
+cp $WORK/orders2.md lyceum/spec/orders.md
+exec lyceum check --pre-commit
+stdout 'the project approval no longer matches lyceum/spec/orders.md'
+! stdout 'bypass'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Reverted, it leaves nothing behind.
+cp $WORK/orders.md lyceum/spec/orders.md
+exec lyceum check --pre-commit
+stdout '^No findings$'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Uncommitted code before the code-opening gate: reported, no bypass event.
+exec lyceum add feat 'CSV export'
+
+# A hand-edited, uncommitted plan: a failing finding on a dirty file, no bypass event.
+exec sh -c 'for f in lyceum/plan/*.md; do sed "s/^gate: spec/gate: build/" "$f" > p.tmp && mv p.tmp "$f"; done'
+exec lyceum check --pre-commit
+stdout '^fail: cli-fields: plan field gate is build, but the event log implies spec'
+! stdout 'Wrote .* bypass'
+! grep '"type":"bypass"' lyceum/events.jsonl
+exec git checkout -- lyceum/plan
+
+cp $WORK/app.go app.go
+exec lyceum check --pre-commit
+stdout 'app\.go'
+! stdout 'bypass'
+! grep '"type":"bypass"' lyceum/events.jsonl
+
+# Committed, it is one bypass event.
+exec git add app.go
+exec git commit -q -m 'code before the gate'
+exec lyceum check --pre-commit
+stdout '^Wrote 1 bypass event to lyceum/events.jsonl$'
+grep -count=1 '"type":"bypass",.*"check":"gate-before-code"' lyceum/events.jsonl
+
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+-- orders.md --
+# Orders
+-- orders2.md --
+# Orders
+
+Edited.
+-- app.go --
+package main
+-- project.txt --
+project

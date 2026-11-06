@@ -1,0 +1,89 @@
+# AC104: Given a bug branch whose diff touches only login_test.go, when --repro TestLoginPlus runs and the test fails, then repro clears; when it passes, then repro does not clear
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+
+# The full suite never clears repro.
+mkdir src
+cp $WORK/pass_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test
+stdout '^Not cleared: repro: it clears only on a failing repro test run by lyceum test --repro <test>, not on the full suite$'
+stdout '^Next: write a test that fails because of the bug, commit it, then run "lyceum test --repro <test>"$'
+
+# The repro test passes: it does not reproduce the bug, so repro does not clear (exit 0).
+exec lyceum test --repro TestLoginPlus
+stdout '^Passed: sh ./src/login_test.sh ''TestLoginPlus'' exited 0 after \S+$'
+stdout '^Not cleared: repro: test TestLoginPlus passed, so it does not reproduce the bug; a repro test must fail before the fix exists$'
+stdout '^Gate: repro$'
+! grep 'gate-clear' lyceum/events.jsonl
+grep '^gate: repro$' lyceum/plan/6ae678-login-plus.md
+
+# It fails, but the output does not mention it: not cleared.
+cp $WORK/silent_test.sh src/login_test.sh
+exec git commit -q -am 'silent'
+exec lyceum test --repro TestLoginPlus
+stdout '^Failed: sh ./src/login_test.sh ''TestLoginPlus'' exited 1 after \S+$'
+stdout '^Not cleared: repro: the run failed, but its output does not mention TestLoginPlus, so it may not have run that test$'
+! grep 'gate-clear' lyceum/events.jsonl
+
+# It fails and names the test: repro clears, the bug moves to diagnose and in-progress.
+cp $WORK/fail_test.sh src/login_test.sh
+exec git commit -q -am 'failing repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Failed: sh ./src/login_test.sh ''TestLoginPlus'' exited 1 after \S+$'
+stdout '^--- FAIL: TestLoginPlus$'
+stdout '^Cleared repro for 6ae678-login-plus$'
+stdout '^Gate: diagnose$'
+grep '^gate: diagnose$' lyceum/plan/6ae678-login-plus.md
+grep '^status: in-progress$' lyceum/plan/6ae678-login-plus.md
+
+# One gate-clear event: the run inlined, with repro set and no subset, and the fingerprint of the test file.
+exec sh -c 'grep -c gate-clear lyceum/events.jsonl'
+stdout '^1$'
+sha256file src/login_test.sh
+cp stdout $WORK/fp.txt
+grep '"type":"gate-clear","unit":"6ae678-login-plus",.*,"fingerprint":\{"src/login_test.sh":"sha256:[0-9a-f]{64}"\},"gate":"repro","run":\{"ts":.*"subset":null,"repro":"TestLoginPlus",.*"exit":1,.*\},"status":"in-progress"\}$' lyceum/events.jsonl
+exec sh -c 'grep -qF "\"fingerprint\":{\"src/login_test.sh\":\"$(cat $WORK/fp.txt)\"}" lyceum/events.jsonl'
+exec sh -c 'grep -lF "\"repro\":\"TestLoginPlus\"" .lyceum/runs/*.json | wc -l'
+stdout '^ *3$'
+exec git log -1 --format=%s
+stdout '^lyceum: clear repro 6ae678-login-plus$'
+exec git status --porcelain
+! stdout .
+
+# The log replays the clear and the test file is allowed: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- pass_test.sh --
+# TestLoginPlus
+echo "ok $1"
+-- silent_test.sh --
+# TestLoginPlus
+exit 1
+-- fail_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

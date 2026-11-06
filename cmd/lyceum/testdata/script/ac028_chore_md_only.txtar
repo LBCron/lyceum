@@ -1,0 +1,40 @@
+# AC28: given a chore branch whose diff touches only *.md files, when check --ci runs, then it passes with no plan approval
+# The chore's plan and add event are written by hand, as "lyceum chore" would write them.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec git switch -q -c chore/6ae678-readme
+mkdir lyceum/plan
+cp $WORK/plan.md lyceum/plan/6ae678-readme.md
+exec sh -c 'cat $WORK/add.jsonl >> lyceum/events.jsonl'
+exec git add -A
+exec git commit -q -m 'chore: readme'
+
+cp $WORK/x.md README.md
+mkdir sub
+cp $WORK/x.md sub/notes.md
+exec git add -A
+exec git commit -q -m 'readme'
+exec lyceum check --ci
+stdout '^No findings$'
+stdout '^Unit: 6ae678-readme$'
+! stderr .
+! grep '"type":"approve"' lyceum/events.jsonl
+
+-- plan.md --
+---
+id: 6ae678-readme
+type: chore
+title: Readme
+branch: chore/6ae678-readme
+status: in-progress
+gate: build
+approvals: []
+---
+
+## What and why
+-- add.jsonl --
+{"ts":"2026-01-01T00:00:00Z","type":"add","unit":"6ae678-readme","actor":"owner@example.com","commit":"0000000","branch":"chore/6ae678-readme","gate":"build","status":"in-progress","unit_type":"chore"}
+-- x.md --
+# X

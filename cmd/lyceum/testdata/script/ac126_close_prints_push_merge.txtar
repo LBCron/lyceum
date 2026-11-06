@@ -1,0 +1,72 @@
+# AC126: given close with no gh or glab or no remote, then it prints the push and merge commands and writes no merge event
+# gh here is a fake that records its arguments; the host's is hidden from scripts.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+mkdir $WORK/bin
+cp $WORK/fake-gh $WORK/bin/gh
+chmod 0755 $WORK/bin/gh
+env PATH=$WORK/bin${:}$PATH
+
+# No remote: nothing to push; the owner's local merge is printed.
+exec lyceum add doc 'Guide'
+mkdir docs
+cp $WORK/guide.md docs/guide.md
+exec git add -A
+exec git commit -q -m 'guide'
+exec lyceum test
+exec lyceum close
+stdout '^Closed 6ae678-guide$'
+stdout '^No origin remote, so no pull request. To merge, the owner runs:$'
+stdout '^  git switch main && git merge --no-ff docs/6ae678-guide$'
+stdout '^Next: the owner merges the branch: git switch main && git merge --no-ff docs/6ae678-guide$'
+! exists $WORK/gh-args.txt
+
+# The owner merges as printed; no merge event is written, and check on main has no failing finding.
+exec git switch -q main
+exec git merge -q --no-ff -m 'merge guide' docs/6ae678-guide
+! grep '"type":"merge"' lyceum/events.jsonl
+exec lyceum check --ci
+! stdout '^fail:'
+
+# A remote that is neither GitHub nor GitLab, with gh installed: the push and merge commands, and gh is not run.
+exec git remote add origin https://git.example.com/acme/app.git
+exec lyceum add doc 'Faq'
+cp $WORK/guide.md docs/faq.md
+exec git add -A
+exec git commit -q -m 'faq'
+exec lyceum test
+exec lyceum close --json
+jsonobject
+stdout '"next":"git push -u origin docs/3f4fbd-faq, then open a pull request from docs/3f4fbd-faq into main; the owner merges it"'
+stderr '^  git push -u origin docs/3f4fbd-faq$'
+stderr '^  git switch main && git merge --no-ff docs/3f4fbd-faq && git push origin main$'
+! exists $WORK/gh-args.txt
+! grep '"type":"merge"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+sh ./a_test.sh
+-- a_test.sh --
+true
+-- guide.md --
+# Guide
+-- fake-gh --
+#!/bin/sh
+printf '%s\n' "$@" > "$WORK/gh-args.txt"
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

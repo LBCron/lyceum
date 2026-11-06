@@ -1,0 +1,62 @@
+# a payload the hook can't read writes .lyceum/hook-warning.json (harness, time, error); status warns while it
+# exists, in both forms; the next payload the hook reads removes it. Where Lyceum is not set up, nothing is written.
+
+# Not set up: the unreadable payload is allowed and nothing is written.
+cd $REPO
+stdin $WORK/garbage.txt
+exec lyceum hook pre-tool --harness claude
+! stdout .
+stderr '^lyceum hook: allowed a tool call it could not read: '
+! exists .lyceum
+
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum status
+! stdout 'Warning'
+
+# An unreadable payload writes the warning; the tree stays clean (.lyceum/ is ignored).
+stdin $WORK/garbage.txt
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+stderr '^lyceum hook: allowed a tool call it could not read: pi pre-tool payload: '
+cmp .lyceum/hook-warning.json $WORK/warning.json
+exec git status --porcelain
+! stdout .
+
+exec lyceum status
+stdout '^Warning: the pi hook could not read a tool call at 2026-01-01T00:00:00Z and let it through: pi pre-tool payload: invalid character ''o'' in literal null \(expecting ''u''\)\. Until it reads one again, it may not be blocking anything; check that the harness and lyceum are up to date$'
+exec lyceum status --json
+jsonobject
+stdout '"hook_warning":\{"harness":"pi","at":"2026-01-01T00:00:00Z","error":"pi pre-tool payload: invalid character ''o'' in literal null \(expecting ''u''\)"\}'
+
+# A payload of the right shape but missing its path also counts as unreadable.
+payload claude/write.json $WORK/p.json '"file_path": "/repo/note.txt",='
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stderr 'claude pre-tool payload: Write call without tool_input.file_path'
+exec lyceum status --json
+stdout '"hook_warning":\{"harness":"claude",'
+
+# The next payload the hook reads, allowed or denied, removes the warning.
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny",'
+! exists .lyceum/hook-warning.json
+exec lyceum status
+! stdout 'Warning'
+exec lyceum status --json
+! stdout 'hook_warning'
+
+# With no warning file, a good payload still answers normally.
+payload claude/write.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+-- garbage.txt --
+not json
+-- warning.json --
+{"harness":"pi","at":"2026-01-01T00:00:00Z","error":"pi pre-tool payload: invalid character 'o' in literal null (expecting 'u')"}

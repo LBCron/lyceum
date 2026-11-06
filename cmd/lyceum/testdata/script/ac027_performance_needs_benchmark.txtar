@@ -1,0 +1,40 @@
+# AC27: given a refactor whose stated goal is performance, when intent is approved without a metric in the plan, then the CLI refuses the approval and names the missing metric
+# The goal is the plan's goal: field; performance makes benchmark: required.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum refactor 'Faster parser'
+linesub lyceum/plan/6ae678-faster-parser.md lyceum/plan/6ae678-faster-parser.md 'approvals: []' 'goal: performance\napprovals: []'
+grep '^goal: performance$' lyceum/plan/6ae678-faster-parser.md
+exec git commit -q -am 'intent'
+
+# No benchmark: refused, naming it; nothing is recorded.
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^Can''t approve intent: the plan''s goal is performance, but it names no metric: benchmark: is empty$'
+stderr '^Next: set benchmark: in lyceum/plan/6ae678-faster-parser.md to a command that exits 0 only when the performance target is met, then run "lyceum approve intent" yourself in a terminal$'
+! stderr 'Type the gate name'
+! grep '"type":"approve"' lyceum/events.jsonl
+
+# With a benchmark, intent is approved.
+linesub lyceum/plan/6ae678-faster-parser.md lyceum/plan/6ae678-faster-parser.md 'goal: performance' 'goal: performance\nbenchmark: sh ./bench.sh'
+exec git commit -q -am 'benchmark'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: baseline$' lyceum/plan/6ae678-faster-parser.md
+
+# Any other goal needs no metric.
+exec git switch -q main
+exec lyceum refactor 'Tidy parser'
+linesub lyceum/plan/3f4fbd-tidy-parser.md lyceum/plan/3f4fbd-tidy-parser.md 'approvals: []' 'goal: readability\napprovals: []'
+exec git commit -q -am 'intent'
+ttyin -stdin $WORK/intent.txt
+exec sh -c 'lyceum approve intent >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+-- intent.txt --
+intent

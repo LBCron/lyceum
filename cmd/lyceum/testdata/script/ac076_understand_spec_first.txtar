@@ -1,0 +1,108 @@
+# AC76: given an approved spec area and an understand record on the same topic, when the lookup runs, then the spec area is listed first
+cd $REPO
+exec lyceum init
+mkdir src lyceum/spec docs/guides
+cp $WORK/a.ts src/a.ts
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/payments.md lyceum/spec/payments.md
+cp $WORK/billing.md lyceum/spec/billing.md
+cp $WORK/stray.md lyceum/spec/stray.md
+cp $WORK/arch.md docs/architecture.md
+cp $WORK/guide.md docs/guides/setup.md
+exec git add -A
+exec git commit -q -m 'lyceum init, spec, docs and code'
+
+# Records named so they sort before the spec areas, of both kinds.
+mkdir lyceum/understand lyceum/trace
+cp $WORK/understand.md lyceum/understand/payments.md
+exec lyceum record lyceum/understand/payments.md
+cp $WORK/trace.md lyceum/trace/refund.md
+exec lyceum record lyceum/trace/refund.md
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+
+# Registered areas first, in registry order, then understand, then trace, then docs; an
+# unregistered area file is not listed. A doc and an area with no cites: have no freshness.
+exec lyceum understand 'how payments work'
+cmp stdout $WORK/want-understand.txt
+! stderr .
+
+# The cited file changes: the area and the record show drifted, naming it.
+cp $WORK/a2.ts src/a.ts
+exec lyceum understand 'payments'
+stdout '^  drifted area lyceum/spec/payments.md: Payments \(changed src/a.ts\)$'
+stdout '^  drifted understand lyceum/understand/6ae678-how-payments-work.md: How payments work \(changed src/a.ts\)$'
+exec lyceum understand --json 'payments'
+jsonobject
+stdout '"candidates":\[\{"kind":"area","path":"lyceum/spec/payments.md","title":"Payments","state":"drifted","changed":\["src/a.ts"\]\},\{"kind":"area","path":"lyceum/spec/billing.md","title":"Billing","state":"—"\},\{"kind":"understand",'
+
+# trace lists the same candidates, the question printed back, and points at a trace record.
+exec lyceum trace 'how is a refund issued?'
+stdout '^Question: how is a refund issued\?$'
+stdout '^Candidates:\n  drifted area lyceum/spec/payments.md: Payments \(changed src/a.ts\)\n'
+stdout '^  fresh trace lyceum/trace/3f4fbd-refund-flow.md: Refund flow$'
+stdout 'then run "lyceum record lyceum/trace/<file>.md"$'
+
+# Neither creates anything.
+exec git rev-parse HEAD
+cmp stdout $WORK/head.txt
+exec git status --porcelain
+stdout '^ M src/a.ts$'
+stdout -count=1 '^.+$'
+
+-- a.ts --
+export const a = 1
+-- a2.ts --
+export const a = 2
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| payments | `spec/payments.md` | Payments | AC1 |
+| billing | `spec/billing.md` | Invoices | AC2 |
+-- payments.md --
+---
+cites:
+  - path: src/a.ts
+    blob: "41715495f45f651e6cf7d38f58a3d512abcfa440"
+---
+# Payments
+
+## As built
+
+Payments live in src/a.ts.
+-- billing.md --
+# Billing
+-- stray.md --
+# Stray
+-- arch.md --
+# Architecture
+-- guide.md --
+Setup steps, no heading.
+-- understand.md --
+---
+kind: understand
+title: How payments work
+cites:
+  - path: src/a.ts
+---
+-- trace.md --
+---
+kind: trace
+title: Refund flow
+cites:
+  - path: lyceum/SPEC.md
+---
+-- want-understand.txt --
+Hint: how payments work
+Candidates:
+  fresh area lyceum/spec/payments.md: Payments
+  — area lyceum/spec/billing.md: Billing
+  fresh understand lyceum/understand/6ae678-how-payments-work.md: How payments work
+  fresh trace lyceum/trace/3f4fbd-refund-flow.md: Refund flow
+  — docs docs/architecture.md: Architecture
+  — docs docs/guides/setup.md: setup
+Next: if a fresh candidate answers the hint, summarise it; if one is drifted or broken, refresh it from the code; otherwise read the code, write the record in lyceum/understand/ with cites: paths only, then run "lyceum record lyceum/understand/<file>.md"

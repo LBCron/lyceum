@@ -1,0 +1,108 @@
+# Release on a v* tag: goreleaser builds the four v1 platforms, attaches the
+# archives and checksums.txt to the GitHub release and writes the brew cask to
+# oritromax/homebrew-tap; then the npm packages are published (platform
+# packages first, the lyceum shim last); then each archive is checked on its
+# own platform (AC85); a stable release then moves its major tag (v1), which
+# check-action@v1 resolves to the release it points at.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create the release and upload its assets
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - name: Build the npm packages
+        run: scripts/npm-packages.sh "$GITHUB_REF_NAME" dist npm-out
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          # A prerelease (v1.0.0-rc.1) goes to the next dist-tag, a release to latest.
+          case "$GITHUB_REF_NAME" in
+            *-*) tag=next ;;
+            *) tag=latest ;;
+          esac
+          for pkg in cli-linux-x64 cli-linux-arm64 cli-darwin-x64 cli-darwin-arm64 lyceum; do
+            npm publish "npm-out/$pkg" --access public --tag "$tag"
+          done
+
+  verify:
+    needs: release
+    permissions:
+      contents: read # download the release assets
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: linux-x64, runner: ubuntu-24.04, os: linux, arch: amd64 }
+          - { platform: linux-arm64, runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
+          - { platform: darwin-x64, runner: macos-15-intel, os: darwin, arch: amd64 }
+          - { platform: darwin-arm64, runner: macos-14, os: darwin, arch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    name: verify ${{ matrix.platform }}
+    steps:
+      - name: Download, check and run the ${{ matrix.platform }} archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          archive="lyceum_${version}_${OS}_${ARCH}.tar.gz"
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$archive" --pattern checksums.txt
+          grep "  $archive\$" checksums.txt | shasum -a 256 -c -
+          tar -xzf "$archive" lyceum
+          got="$(./lyceum --version)"
+          echo "$got"
+          test "$got" = "lyceum $version"
+
+  major-tag:
+    needs: verify
+    # Stable releases only: a prerelease (v1.0.0-rc.1) never moves v1.
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # move the major tag
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Move the major tag to this release
+        run: |
+          set -eu
+          major="${GITHUB_REF_NAME%%.*}"
+          # Only the highest stable vN.x.y moves vN: a patch to an older minor leaves it.
+          highest="$(git tag -l "$major.*.*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          if [ "$highest" != "$GITHUB_REF_NAME" ]; then
+            echo "$GITHUB_REF_NAME is not the highest $major release ($highest); $major stays"
+            exit 0
+          fi
+          git tag -f "$major" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$major"

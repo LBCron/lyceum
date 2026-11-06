@@ -1,0 +1,54 @@
+# AC33: given close when TESTING.md changed in the unit and is not re-approved, then close refuses and names approve testing
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A doc unit reaches close.
+exec lyceum add doc 'Guide'
+mkdir docs
+cp $WORK/guide.md docs/guide.md
+exec git add -A
+exec git commit -q -m 'guide'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-guide$'
+
+# TESTING.md changes on the branch: close refuses and names approve testing.
+exec sh -c 'echo "Run the suite before a PR." >> TESTING.md'
+exec git commit -q -am 'testing note'
+! exec lyceum close
+stderr '^Can''t close 6ae678-guide: TESTING.md changed on this branch, and the owner has not approved it as it is now$'
+stderr '^Next: run "lyceum approve testing" yourself in a terminal, then run "lyceum close" again$'
+! grep '"type":"close"' lyceum/events.jsonl
+
+# Re-approved as it is now, close goes through.
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum close
+stdout '^Closed 6ae678-guide$'
+grep -count=1 '"type":"close","unit":"6ae678-guide"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+sh ./a_test.sh
+-- a_test.sh --
+true
+-- guide.md --
+# Guide
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

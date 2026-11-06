@@ -1,0 +1,87 @@
+# AC43: the plan is hashed without its ## Progress and ## Log sections, which the agent
+# keeps updating after the approval, so ticking a box or appending a log line is no
+# approval-integrity finding; editing ## Steps or an agent-written frontmatter key still is.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec sh -c 'echo "| orders | spec/orders.md | Orders | |" >> lyceum/SPEC.md'
+exec git add -A
+exec git commit -q -m 'draft spec'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git show HEAD:lyceum/plan/6ae678-csv-export.md
+cp stdout $WORK/approved.md
+
+# The agent ticks a Progress box and appends a Log line: check --ci stays clean.
+exec sh -c 'sed "s/^- \[ \] T1 write the exporter$/- [x] T1 write the exporter/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+grep '^- \[x\] T1 write the exporter$' lyceum/plan/6ae678-csv-export.md
+exec sh -c 'echo "- 2026-01-01: T1 done" >> lyceum/plan/6ae678-csv-export.md'
+exec git commit -q -am 'tick progress, log'
+exec lyceum check --ci
+cmp stdout $WORK/want-clean.txt
+! stderr .
+
+# Editing ## Steps is a finding.
+exec sh -c 'sed "s/^1. Write the exporter.$/1. Write the exporter and an importer./" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+grep '^1. Write the exporter and an importer.$' lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'edit steps'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: approval-integrity: the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved$'
+
+# Restored, then an agent-written frontmatter key edited: a finding too.
+cp $WORK/approved.md lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'restore'
+exec lyceum check --ci
+cmp stdout $WORK/want-clean.txt
+exec sh -c 'sed "s/^acs: \[AC1\]$/acs: [AC1, AC2]/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+grep '^acs: \[AC1, AC2\]$' lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'edit acs'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: approval-integrity: the spec approval no longer matches lyceum/plan/6ae678-csv-export.md: it changed after it was approved$'
+
+-- spec.txt --
+spec
+-- orders.md --
+# Orders
+
+AC1: export orders as CSV.
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+approvals: []
+areas: [orders]
+files: [src/orders/export.go]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+
+## Steps
+
+1. Write the exporter.
+
+## Progress
+
+- [ ] T1 write the exporter
+
+## Log
+-- want-clean.txt --
+No findings
+Unit: 6ae678-csv-export
+Gate: build
+Next: finish the build work described in the plan

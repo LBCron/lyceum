@@ -1,0 +1,11 @@
+{
+  "tool": "write",
+  "sessionID": "SESSION",
+  "agent": "build",
+  "messageID": "SESSION",
+  "id": "CALL",
+  "input": {
+    "path": "/repo/note.txt",
+    "content": "hi\n"
+  }
+}

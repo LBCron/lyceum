@@ -1,0 +1,70 @@
+# AC178: given a clean-tree refusal over an untracked file, then the refusal names the file and a step says to ignore it if a tool writes it; given only tracked changes, then no such step; the file still refuses until it is ignored or removed
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# add: an untracked file.
+cp $WORK/t.sh notes.state
+exec sh -c 'lyceum add bug ''Crash''; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  notes\.state$'
+stderr '^Next: if a tool writes notes\.state on its own, ignore it instead: add it to \.gitignore and commit that$'
+rm notes.state
+
+# add: only a tracked change.
+cp $WORK/fix.sh t.sh
+exec sh -c 'lyceum add bug ''Crash''; echo "exit=$?"'
+stdout '^exit=2$'
+! stderr 'ignore it'
+exec git checkout -- t.sh
+
+# The field shape: approve cause and an untracked file a harness wrote. The refusal stands.
+exec lyceum add bug 'Crash'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause --no-repro ''visual only'' >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/fix.sh fix.sh
+exec git add -A
+exec git commit -q -m 'fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-crash$'
+mkdir .tool
+cp $WORK/t.sh .tool/taste.md
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  \.tool/taste\.md$'
+stderr '^Next: if a tool writes \.tool/taste\.md on its own, ignore it instead: add it to \.gitignore and commit that$'
+
+# Ignored and committed, cause goes through once verify clears on that commit.
+exec sh -c 'echo .tool/ >> .gitignore'
+exec git add -A
+exec git commit -q -m 'ignore the tool state'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+! stderr 'uncommitted changes'
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+-- t.sh --
+exit 0
+-- a_test.sh --
+exit 0
+-- fix.sh --
+echo fixed
+-- testing.txt --
+testing
+-- cause.txt --
+cause

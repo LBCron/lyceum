@@ -1,0 +1,20 @@
+name: Lyceum check
+description: Install the released lyceum binary for the runner, verify its checksum, and run `lyceum check --ci`.
+inputs:
+  version:
+    description: >-
+      The release to run: `latest`, a major version (`v1`) or a release tag (`v1.2.3`).
+      Empty (the default) follows the action's ref: `@v1` runs the release `v1` was last moved to,
+      `@v1.2.3` runs that release, any other ref runs `latest`.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: lyceum check --ci
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/run.sh"'
+      env:
+        LYCEUM_VERSION: ${{ inputs.version }}
+        LYCEUM_ACTION_REF: ${{ github.action_ref }}
+        LYCEUM_ACTION_REPOSITORY: ${{ github.action_repository }}

@@ -1,0 +1,112 @@
+# End to end, a bug from add to cause: the repro test fails and clears repro, the fix makes the suite pass and
+# clears verify, and the owner's approve cause, whose summary shows the repro test, its failing output and the
+# fix diff, hashes the plan and the fix and moves the bug to close.
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyrun $WORK/testing.txt 'lyceum approve testing'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+grep '^gate: repro$' lyceum/plan/6ae678-login-plus.md
+
+# The repro test fails on the unfixed code: repro clears.
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+stdout '^Gate: diagnose$'
+
+# cause is not the gate yet.
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=2$'
+stderr '^Can''t approve cause: unit 6ae678-login-plus is at gate diagnose; diagnose is a work step and clears when its work is done, not by an approval$'
+
+# The root cause goes in the plan, then the fix: the passing suite clears verify, and the bug is at cause.
+exec sh -c 'printf "\n## Root cause\n\nlogin_plus returned the wrong value.\n" >> lyceum/plan/6ae678-login-plus.md'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'root cause and fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+stdout '^Gate: cause$'
+stdout '^Next: run "lyceum approve cause" yourself in a terminal$'
+
+# approve cause refuses a dirty tree and lists the paths: the fix must be committed and in the suite run.
+exec sh -c 'echo "login_plus() { echo ok2; }" > src/login.sh'
+cp $WORK/login-fixed.sh src/extra.sh
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=2$'
+stderr '^Can''t approve cause: the working tree has uncommitted changes, and an approved fix must be committed and in the suite run:$'
+stderr '^  src/login.sh$'
+stderr '^  src/extra.sh$'
+stderr '^Next: commit first: git add <paths> && git commit -m "<message>", then run "lyceum test" so verify clears again, then run lyceum approve cause again$'
+! stderr 'Type the gate name'
+! grep '"gate":"cause"' lyceum/events.jsonl
+exec git checkout -- src/login.sh
+rm src/extra.sh
+
+# The owner approves cause: the summary shows the repro test, its failing output and the fix diff.
+ttyrun $WORK/cause.txt 'lyceum approve cause'
+stdout '^exit=0$'
+stderr '^Gate: cause$'
+stderr '^  lyceum/plan/6ae678-login-plus.md sha256:[0-9a-f]{64}$'
+stderr '^  src/login.sh sha256:[0-9a-f]{64}$'
+! stderr '^  src/login_test.sh '
+! stderr '^  lyceum/events.jsonl '
+stderr '^Repro test: TestLoginPlus$'
+stderr '^Its failing output, last 50 lines \(\.lyceum/runs/\S+\.out\):$'
+stderr '^--- FAIL: TestLoginPlus$'
+stderr '^Fix diff \(files that are not tests, since commit [0-9a-f]{7,}\):$'
+stderr '^-login_plus\(\) \{ echo broken; \}$'
+stderr '^\+login_plus\(\) \{ echo ok; \}$'
+stderr 'Type the gate name to approve \(cause\): '
+grep 'Approved cause for 6ae678-login-plus' $WORK/tty.out
+
+# One cause event hashes the plan and the fix; the plan mirrors it and is at close, still implemented.
+sha256file src/login.sh
+cp stdout $WORK/fix.txt
+grep -count=1 '"gate":"cause"' lyceum/events.jsonl
+grep '"type":"approve","unit":"6ae678-login-plus",.*"counts":true,"gate":"cause","hashes":\{"lyceum/plan/6ae678-login-plus.md":"sha256:[0-9a-f]{64}","src/login.sh":"sha256:[0-9a-f]{64}"\}' lyceum/events.jsonl
+exec sh -c 'grep -cF "\"src/login.sh\":\"$(cat $WORK/fix.txt)\"" lyceum/events.jsonl'
+stdout '^1$'
+grep '^gate: close$' lyceum/plan/6ae678-login-plus.md
+grep '^status: implemented$' lyceum/plan/6ae678-login-plus.md
+grep '^  - gate: cause$' lyceum/plan/6ae678-login-plus.md
+exec git log -1 --format=%s
+stdout '^lyceum: approve cause 6ae678-login-plus$'
+exec git status --porcelain
+! stdout .
+
+# The log replays every event: check has no failing finding.
+exec lyceum check --ci
+! stdout '^fail:'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

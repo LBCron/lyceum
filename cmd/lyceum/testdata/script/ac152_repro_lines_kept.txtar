@@ -1,0 +1,74 @@
+# AC152: given repro cleared on TestLoginPlus in login_test.go, when a new test function is added to that file and no repro-time line changes, then verify is not blocked by the freeze; when a repro-time line changes, it is
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+exec git tag at-repro
+
+# A repro-time line changed: the freeze holds, even with the fix in place.
+cp $WORK/login-fixed.sh src/login.sh
+cp $WORK/login_test-changed.sh src/login_test.sh
+exec git commit -q -am 'fix, and change a repro-time line'
+exec lyceum test
+stdout '^Not cleared: verify: these repro test files changed since repro cleared.*: src/login_test.sh$'
+
+# A repro-time line removed: the same.
+cp $WORK/login_test-removed.sh src/login_test.sh
+exec git commit -q -am 'remove a repro-time line'
+exec lyceum test
+stdout '^Not cleared: verify: these repro test files changed since repro cleared.*: src/login_test.sh$'
+
+# Every repro-time line kept, in order, with new lines around them: not blocked.
+cp $WORK/login_test-added.sh src/login_test.sh
+exec git commit -q -am 'add a new test to the file'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo no; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- login_test-changed.sh --
+# TestLoginPlus, edited
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- login_test-removed.sh --
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- login_test-added.sh --
+# A new test sits above the repro test.
+# TestLoginPlus
+. ./src/login.sh
+# TestLoginMinus sits between its lines.
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+echo "ok TestLoginMinus"
+-- testing.txt --
+testing

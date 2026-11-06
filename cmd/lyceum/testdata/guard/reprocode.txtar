@@ -1,0 +1,42 @@
+# Guard reprocode: with --repro's code refusal off, the attack of ac103_repro_refuses_code.txtar clears repro:
+# a branch with the repro test and a fix together.
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add bug 'Login plus'
+
+mkdir src
+cp $WORK/login.go src/login.go
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'test and fix'
+exec lyceum test --repro TestLoginPlus
+! stderr 'not tests'
+stdout '^Cleared repro for 6ae678-login-plus$'
+
+-- testing.txt --
+testing
+-- t.sh --
+echo t.sh ran
+-- login.go --
+package login
+-- login_test.sh --
+# TestLoginPlus
+echo "--- FAIL: $1"
+exit 1
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

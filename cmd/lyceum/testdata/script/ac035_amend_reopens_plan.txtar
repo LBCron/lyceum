@@ -1,0 +1,93 @@
+# AC35: given amend on a unit at build, when it completes, then the affected approvals are marked invalid, the gate moves back, and check fails new code changes until re-approval
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# A feat at build: the owner approved spec, and the build committed code.
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md lyceum/plan/6ae678-csv-export.md 'approvals: []' 'files: [main.go, export.go]\napprovals: []'
+exec git commit -q -am 'plan'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+cp $WORK/main.go main.go
+exec git add -A
+exec git commit -q -m 'build'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# A reason is required, and the tree must be clean.
+! exec lyceum amend
+stderr '^Can''t amend the plan: no reason given; amend records why the approved plan changes$'
+stderr '^Next: run lyceum amend "<reason>"$'
+! exec lyceum amend 6ae678-csv-export
+stderr 'no reason given'
+cp $WORK/main.go export.go
+! exec lyceum amend 'AC2 needs a second format'
+stderr '^Can''t amend 6ae678-csv-export: the working tree has uncommitted changes:$'
+rm export.go
+
+# amend invalidates the spec approval, moves the gate back to spec with status planned, logs the reason and commits.
+exec lyceum amend 6ae678-csv-export 'AC2 needs a second format'
+stdout '^Amended 6ae678-csv-export: AC2 needs a second format$'
+stdout '^Invalidated: spec$'
+stdout '^Gate: spec$'
+stdout '^Next: change the plan for the amend in lyceum/plan/6ae678-csv-export\.md, then run "lyceum approve spec" yourself in a terminal$'
+grep '^gate: spec$' lyceum/plan/6ae678-csv-export.md
+grep '^status: planned$' lyceum/plan/6ae678-csv-export.md
+grep '^## Log\n\n- 2026-01-01: amended: AC2 needs a second format\n$' lyceum/plan/6ae678-csv-export.md
+grep -count=1 '"type":"amend","unit":"6ae678-csv-export",.*"gate":"spec","invalidated":\["spec"\],"reason":"AC2 needs a second format","status":"planned"\}$' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: amend 6ae678-csv-export$'
+exec git status --porcelain
+! stdout .
+
+# The replay applies the amend: the plan agrees with the log, and the code built before the amend is not new.
+exec lyceum check --ci
+stdout '^No findings$'
+
+# status shows the unit back at spec with the reason.
+exec lyceum status
+stdout '^\* +6ae678-csv-export +feat +feat/6ae678-csv-export +planned +spec +- +run "lyceum approve spec" yourself in a terminal$'
+stdout '^Amended 6ae678-csv-export, back at spec: AC2 needs a second format$'
+exec lyceum status --json
+stdout '"amended":"AC2 needs a second format"'
+
+# The agent changes the plan: the invalidated approval no longer holds it.
+exec sh -c 'sed "s/^files: \[main.go, export.go\]$/files: [main.go, export.go, tsv.go]/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+grep '^files: \[main.go, export.go, tsv.go\]$' lyceum/plan/6ae678-csv-export.md
+exec git commit -q -am 'plan: TSV too'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# New code before the re-approval fails check, naming only the new code.
+cp $WORK/main.go export.go
+exec git add -A
+exec git commit -q -m 'more build'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: gate-before-code: the branch changes code since the amend, before the spec gate is approved again: export\.go$'
+! stderr 'main\.go'
+exec git reset -q --hard HEAD~1
+
+# Once the owner approves spec again, the gate opens and the new code passes.
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+grep '^gate: build$' lyceum/plan/6ae678-csv-export.md
+grep '^status: in-progress$' lyceum/plan/6ae678-csv-export.md
+cp $WORK/main.go export.go
+exec git add -A
+exec git commit -q -m 'more build'
+exec lyceum check --ci
+stdout '^No findings$'
+exec lyceum status
+! stdout '^Amended'
+
+-- spec.txt --
+spec
+-- main.go --
+package main

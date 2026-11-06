@@ -1,0 +1,38 @@
+# AC140: given the pre-commit hook installed, when lyceum check refuses or reports findings at commit time, then the commit is made and the output is shown
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# A finding: code on a branch with no unit. The commit is made and the finding is shown.
+exec git switch -q -c work
+cp $WORK/app.go app.go
+exec git add app.go
+exec git commit -q -m 'code without a unit'
+stderr 'app\.go'
+stderr '^  to fix: '
+exec git log -1 --format=%s
+stdout '^code without a unit$'
+
+# A refusal: check exits non-zero because the base branch does not exist. The commit is still made.
+cp $WORK/config.yaml lyceum/config.yaml
+exec git add lyceum/config.yaml
+exec git commit -q -m 'base gone'
+stderr 'the base branch nope is missing'
+exec git log -1 --format=%s
+stdout '^base gone$'
+
+# The hook itself exits 0 on that refusal.
+exec sh -c '.git/hooks/pre-commit; echo "exit=$?"'
+stdout '^exit=0$'
+
+-- defaults.txt --
+
+
+-- app.go --
+package main
+-- config.yaml --
+lyceum: 1
+owner: owner@example.com
+base_branch: nope

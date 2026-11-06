@@ -1,0 +1,118 @@
+# AC174: given a change to a project-approved file, when check reports it, then the to-fix line names the open unit's gate that will hash it: spec for a feat whose plan names the area (through amend once past spec), cause for a bug whose branch changes it, and project when no unit covers it
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir lyceum/spec
+cp $WORK/spec-index.md lyceum/SPEC.md
+cp $WORK/orders.md lyceum/spec/orders.md
+cp $WORK/other.md lyceum/spec/other.md
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/project.txt
+exec sh -c 'lyceum approve project >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# No unit: only project covers it.
+cp $WORK/orders2.md lyceum/spec/orders.md
+exec lyceum check
+stdout '^fail: approval-integrity: the project approval no longer matches lyceum/spec/orders.md'
+stdout '^  to fix: the owner runs "lyceum approve project" in a terminal, or restore lyceum/spec/orders.md '
+cp $WORK/orders.md lyceum/spec/orders.md
+
+# A feat whose plan names the area, at spec: approve spec covers it, and clears it.
+exec lyceum add feat 'CSV export'
+linesub lyceum/plan/6ae678-csv-export.md lyceum/plan/6ae678-csv-export.md 'gate: spec' 'gate: spec\nareas: [orders]'
+cp $WORK/orders2.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'spec edit'
+exec lyceum check
+stdout '^  to fix: the owner runs "lyceum approve spec" in a terminal, or restore lyceum/spec/orders.md '
+# An area the plan does not name is still project's.
+cp $WORK/other2.md lyceum/spec/other.md
+exec lyceum check
+stdout '^  to fix: the owner runs "lyceum approve project" in a terminal, or restore lyceum/spec/other.md '
+cp $WORK/other.md lyceum/spec/other.md
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci
+stdout '^No findings$'
+
+# Past spec, a new area named in the plan: amend reopens the gate first.
+linesub lyceum/plan/6ae678-csv-export.md lyceum/plan/6ae678-csv-export.md 'areas: [orders]' 'areas: [orders, other]'
+cp $WORK/other2.md lyceum/spec/other.md
+exec lyceum check
+stdout '^  to fix: reopen the spec: lyceum amend "<reason>", then the owner runs "lyceum approve spec" in a terminal, or restore lyceum/spec/other.md '
+
+# A bug whose branch changes the area: approve cause covers it, once the bug gets there.
+exec git checkout -q .
+exec git switch -q main
+exec lyceum add bug 'Crash'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause --no-repro ''visual only'' >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/other2.md lyceum/spec/other.md
+exec git add -A
+exec git commit -q -m 'add an AC'
+exec lyceum check
+stdout '^  to fix: once the bug reaches cause, the owner runs "lyceum approve cause" in a terminal, or restore lyceum/spec/other.md '
+cp $WORK/fix.sh fix.sh
+exec git add -A
+exec git commit -q -m 'fix'
+exec lyceum test
+stdout '^Cleared verify for 3f4fbd-crash$'
+exec lyceum check
+stdout '^  to fix: the owner runs "lyceum approve cause" in a terminal, or restore lyceum/spec/other.md '
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum check --ci --json
+! stdout 'approval-integrity'
+
+-- spec-index.md --
+# Specification index
+
+## Area registry
+
+| Area | File | Covers | ACs |
+|---|---|---|---|
+| orders | `spec/orders.md` | Orders | |
+| other | `spec/other.md` | Other | |
+-- orders.md --
+# Orders
+-- orders2.md --
+# Orders
+
+Edited.
+-- other.md --
+# Other
+-- other2.md --
+# Other
+
+Edited.
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+-- t.sh --
+exit 0
+-- a_test.sh --
+exit 0
+-- fix.sh --
+echo fixed
+-- project.txt --
+project
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- cause.txt --
+cause

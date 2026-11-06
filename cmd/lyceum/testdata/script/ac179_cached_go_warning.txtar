@@ -1,0 +1,46 @@
+# AC179: given a passing suite whose output has a Go ok <pkg> (cached) line, when lyceum test runs, then it warns in one line naming -count=1 and the run still clears the gate; with no such line, no warning
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/fresh.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Output that ran: no warning, even with the word in a test's own text.
+exec lyceum test
+! stderr 'cached'
+! stdout 'Warning'
+
+# A cached package: one warning, and verify still clears.
+exec lyceum add feat 'CSV export'
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+cp $WORK/cached.sh t.sh
+exec git add -A
+exec git commit -q -m 'the suite is cached'
+exec lyceum test
+stderr -count=1 '^Warning: this run reused cached Go test results, so those packages did not run: add -count=1 to the go test command in TESTING\.md$'
+stdout '^Cleared verify for 6ae678-csv-export$'
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh t.sh
+test_files: ["*_test.sh"]
+---
+-- fresh.sh --
+printf 'ok  \texample.com/a\t0.1s\n--- log: not (cached)\n'
+-- cached.sh --
+printf 'ok  \texample.com/a\t(cached)\nok  \texample.com/b\t(cached)\tcoverage: 10%% of statements\n'
+-- a_test.sh --
+exit 0
+-- testing.txt --
+testing
+-- spec.txt --
+spec

@@ -1,0 +1,31 @@
+# AC182: given a release build, then lyceum --version prints the tag and init with defaults writes the CI workflow; a dev build keeps withholding it (AC163)
+# lyceum-published is built with the ldflags in .goreleaser.yaml, version 1.2.3-rc.1;
+# lyceum-release is a plain go build. Neither reads LYCEUM_ACTION_PUBLISHED.
+env LYCEUM_ACTION_PUBLISHED=0
+exec lyceum-published --version
+stdout '^lyceum 1\.2\.3-rc\.1$'
+
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum-published init
+stdout 'Created \.github/workflows/lyceum\.yml'
+! stdout 'No CI workflow'
+exists .github/workflows/lyceum.yml
+
+env LYCEUM_ACTION_PUBLISHED=1
+exec git init -q -b main $WORK/dev
+exec git -C $WORK/dev config user.email owner@example.com
+exec git -C $WORK/dev config user.name 'Test Owner'
+exec git -C $WORK/dev commit -q --allow-empty -m initial
+cd $WORK/dev
+exec lyceum-release --version
+stdout '^lyceum dev$'
+stdin $WORK/defaults.txt
+exec lyceum-release init
+stdout 'No CI workflow: CI arrives with the published Action'
+! exists .github/workflows/lyceum.yml
+
+-- defaults.txt --
+
+
+

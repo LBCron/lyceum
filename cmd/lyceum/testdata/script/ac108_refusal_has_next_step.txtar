@@ -1,0 +1,224 @@
+# AC108: every refusal names a reason and at least one concrete next step
+# Every command in the menu is built; each refusal below names its next step.
+cd $REPO
+
+# eject is built; here it refuses because stdin is not a terminal.
+! exec lyceum eject
+! stdout .
+stderr '^Can''t eject: stdin and stdout must both be a terminal; eject is for the owner, typed in their own terminal$'
+stderr '^Next: \S'
+! exec lyceum eject --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# status refuses in a repo Lyceum is not set up in.
+! exec lyceum status
+! stdout .
+stderr '^Can''t show status: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum status --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# check --ci refuses in a repo Lyceum is not set up in (locally it warns).
+! exec lyceum check --ci
+! stdout .
+stderr '^Can''t check: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum check --ci --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# approve refuses in a repo Lyceum is not set up in. approve answers only in a terminal,
+#so stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty); the
+# terminal shows only the echoed Enter.
+ttyrun $WORK/enter.txt 'lyceum approve'
+stdout '^exit=2$'
+! grep '\S' $WORK/tty.out
+stderr '^Can''t approve: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+ttyrun $WORK/enter.txt 'lyceum approve --json'
+stdout '^exit=2$'
+grep '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"].*\}\r?$' $WORK/tty.out
+grep -count=1 '^.*\S' $WORK/tty.out
+! stderr .
+
+# plan is built; here it refuses because Lyceum is not set up.
+! exec lyceum plan
+! stdout .
+stderr '^Can''t show the plan: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: \S'
+! exec lyceum plan --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# amend is built; here it refuses because Lyceum is not set up.
+! exec lyceum amend
+! stdout .
+stderr '^Can''t amend the plan: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: \S'
+! exec lyceum amend --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# close is built; here it refuses because Lyceum is not set up.
+! exec lyceum close
+! stdout .
+stderr '^Can''t close the unit: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: \S'
+! exec lyceum close --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# test is built; here it refuses because Lyceum is not set up.
+! exec lyceum test
+! stdout .
+stderr '^Can''t run tests: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: \S'
+! exec lyceum test --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# log is built; here it refuses because Lyceum is not set up.
+! exec lyceum log
+! stdout .
+stderr '^Can''t show the log: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: \S'
+! exec lyceum log --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# add refuses without a type or a title, and in a repo Lyceum is not set up in.
+! exec lyceum add
+! stdout .
+stderr '^Can''t add a unit: no unit type given; the types are feat, bug, doc and test$'
+stderr '^Next: \S'
+! exec lyceum add --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+! exec lyceum add nope
+! stdout .
+stderr '^Can''t add a unit: unknown unit type "nope"; the types are feat, bug, doc and test$'
+stderr '^Next: \S'
+
+! exec lyceum add feat
+! stdout .
+stderr '^Can''t add a unit: no title given$'
+stderr '^Next: run lyceum add feat "<title>"$'
+! exec lyceum add feat --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+! exec lyceum add bug CSV export
+! stdout .
+stderr '^Can''t add a unit: the title must be one argument$'
+stderr '^Next: quote the title: lyceum add bug "CSV export"$'
+
+! exec lyceum add doc '!!!'
+! stdout .
+stderr '^Can''t add a unit: title "!!!" has no letters or digits to make a slug from$'
+stderr '^Next: \S'
+
+! exec lyceum add test 'Empty export'
+! stdout .
+stderr '^Can''t add a unit: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum add test 'Empty export' --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+! exec lyceum refactor
+! stdout .
+stderr '^Can''t add a unit: no title given$'
+stderr '^Next: run lyceum refactor "<title>"$'
+! exec lyceum refactor --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+! exec lyceum chore
+! stdout .
+stderr '^Can''t add a unit: no title given$'
+stderr '^Next: run lyceum chore "<title>"$'
+! exec lyceum chore --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# understand refuses where Lyceum is not set up.
+! exec lyceum understand
+! stdout .
+stderr '^Can''t understand: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum understand --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# trace refuses where Lyceum is not set up.
+! exec lyceum trace
+! stdout .
+stderr '^Can''t trace: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum trace --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# audit refuses where Lyceum is not set up.
+! exec lyceum audit
+! stdout .
+stderr '^Can''t audit: Lyceum is not set up in this repo: lyceum/config.yaml is missing$'
+stderr '^Next: run "lyceum init"$'
+! exec lyceum audit --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# export with no record refuses, naming the form.
+! exec lyceum export
+! stdout .
+stderr '^Can''t export: export takes the record file and, optionally, the path to write under docs/$'
+stderr '^Next: \S'
+! exec lyceum export --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+! stderr .
+
+# init refuses outside a git repo when no one answers its git init offer.
+mkdir $WORK/plain
+cd $WORK/plain
+! exec lyceum init
+! stdout .
+stderr '^Can''t set up Lyceum here: this is not a git repository$'
+stderr '^Next: \S'
+! exec lyceum init --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"[^"]+","next":\["[^"]'
+
+# add refuses outside a git repo.
+! exec lyceum add feat 'CSV export'
+! stdout .
+stderr '^Can''t add a unit: this is not a git repository, so Lyceum is not set up here$'
+stderr '^Next: run "lyceum init"$'
+
+# check refuses outside a git repo.
+! exec lyceum check --ci
+! stdout .
+stderr '^Can''t check: this is not a git repository, so Lyceum is not set up here$'
+stderr '^Next: run "lyceum init"$'
+
+-- enter.txt --
+

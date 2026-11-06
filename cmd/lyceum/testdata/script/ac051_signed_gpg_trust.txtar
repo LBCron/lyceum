@@ -1,0 +1,57 @@
+# AC51: with approvals.signed: true, a commit signed by a key with the owner's name but no trust, or a trusted key of someone else, is not signed by the owner's key: check --ci fails
+[!exec:gpg] skip 'trust is a gpg concept'
+shorttemp GNUPGHOME
+cd $REPO
+exec lyceum init
+exec gpg --batch --passphrase '' --quick-generate-key 'Owner <owner@example.com>' ed25519 sign never
+exec gpg --batch --passphrase '' --quick-generate-key 'Other <other@example.com>' ed25519 sign never
+exec git config gpg.format openpgp
+exec git config user.signingkey owner@example.com
+exec sh -c 'sed "s/signed: false/signed: true/" lyceum/config.yaml > $WORK/config.yaml'
+cp $WORK/config.yaml lyceum/config.yaml
+cp $WORK/TESTING.md TESTING.md
+exec git add -A
+exec git commit -q -m 'setup'
+
+# gpg trusts its own new keys: a good signature by the owner's key is quiet.
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git log -1 --format=%G?:%GS
+stdout '^G:Owner <owner@example.com>$'
+exec lyceum check --ci
+! stdout 'signed-approvals'
+
+# A trusted key, but not the owner's: the signature is good and CI still fails.
+exec lyceum add feat 'CSV export'
+exec git config user.signingkey other@example.com
+ttyin -stdin $WORK/spec.txt
+exec sh -c 'lyceum approve spec >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git log -1 --format=%G?:%GS
+stdout '^G:Other <other@example.com>$'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'signed-approvals: the spec approval is in commit'
+! stderr 'signed-approvals: the testing approval'
+
+# The same owner uid on a key nobody trusts, which anyone can make: CI fails on the testing approval too.
+exec sh -c 'gpg --with-colons --list-secret-keys owner@example.com | awk -F: "/^fpr/{print \$10\":2:\"; exit}" | gpg --import-ownertrust'
+exec sh -c 'git log --all --format=%G?:%GS | grep -c "^U:Owner <owner@example.com>$"'
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr 'signed-approvals: the testing approval is in commit'
+exec gpgconf --kill gpg-agent
+
+-- testing.txt --
+testing
+-- spec.txt --
+spec
+-- TESTING.md --
+---
+lyceum: 1
+suite: "true"
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

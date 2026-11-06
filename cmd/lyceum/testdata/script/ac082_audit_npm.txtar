@@ -1,0 +1,118 @@
+# AC82: given audit on a Node project with npm installed, then npm audit ran, a report exists in lyceum/audit/, and package.json and the lockfile are unchanged
+cd $REPO
+exec lyceum init
+cp $WORK/package.json package.json
+cp $WORK/package-lock.json package-lock.json
+exec git add -A
+exec git commit -q -m 'lyceum init and node project'
+mkdir $WORK/bin
+cp $WORK/npm $WORK/bin/npm
+chmod 755 $WORK/bin/npm
+env PATH=$WORK/bin:$PATH
+sha256file package.json
+cp stdout $WORK/manifest-before.txt
+sha256file package-lock.json
+cp stdout $WORK/lock-before.txt
+exec git rev-parse HEAD
+cp stdout $WORK/head.txt
+exec git rev-parse HEAD:package.json
+stdout '^f4d2ef6b1f7eb666e8e386fdd8ce077288edd60b$'
+
+# npm audit --json runs at the repo root; its raw output, exit code and command are recorded, parsed for nothing.
+exec lyceum audit
+stdout '^Ran: npm audit --json exited 1$'
+stdout '^Recorded lyceum/audit/2026-01-01-6ae678.md$'
+stdout '^Next: read the raw output in lyceum/audit/2026-01-01-6ae678.md, write the summary under its ## Summary, then run "lyceum record lyceum/audit/2026-01-01-6ae678.md"; '
+! stderr .
+cmpenv $WORK/npm-args.txt $WORK/want-args.txt
+cmp lyceum/audit/2026-01-01-6ae678.md $WORK/want-report.md
+
+# It is committed through the record path, alone, and is fresh.
+exec git log -1 --format=%s
+stdout '^lyceum: record 6ae678-dependency-audit-2026-01-01$'
+exec git show --name-only --format= HEAD
+stdout '^lyceum/audit/2026-01-01-6ae678.md$'
+stdout -count=1 '^.+$'
+exec lyceum status
+stdout '^Records: 1 fresh, 0 drifted, 0 broken$'
+
+# package.json and the lockfile are unchanged, byte for byte; only the record is new.
+sha256file package.json
+cmp stdout $WORK/manifest-before.txt
+sha256file package-lock.json
+cmp stdout $WORK/lock-before.txt
+exec sh -c 'git diff --name-only "$(cat $WORK/head.txt)" HEAD'
+stdout '^lyceum/audit/2026-01-01-6ae678.md$'
+stdout -count=1 '^.+$'
+exec git status --porcelain
+! stdout .
+
+# The agent writes the summary; record commits it under the same name.
+exec sh -c 'echo "One high: lodash. Owner to decide on an upgrade chore." >> lyceum/audit/2026-01-01-6ae678.md'
+exec lyceum record lyceum/audit/2026-01-01-6ae678.md
+stdout '^Recorded lyceum/audit/2026-01-01-6ae678.md$'
+
+# A second audit gets a new name; with a go.mod too, both tools run, in order.
+cp $WORK/go.mod go.mod
+exec git add go.mod
+exec git commit -q -m 'go too'
+cp $WORK/govulncheck $WORK/bin/govulncheck
+chmod 755 $WORK/bin/govulncheck
+exec lyceum audit
+stdout '^Ran: npm audit --json exited 1; govulncheck ./... exited 0$'
+stdout '^Recorded lyceum/audit/2026-01-01-[0-9a-f]{6}.md$'
+! stdout 6ae678
+exec sh -c 'cat lyceum/audit/2026-01-01-*.md'
+stdout '^## govulncheck$'
+stdout '^Command: `govulncheck ./...`$'
+stdout '^No vulnerabilities found.$'
+stdout '^  - path: go.mod$'
+
+-- npm --
+#!/bin/sh
+echo "$@" > "$WORK/npm-args.txt"
+pwd >> "$WORK/npm-args.txt"
+echo '{"vulnerabilities":{"lodash":{"severity":"high"}}}'
+echo 'npm warn audit' >&2
+exit 1
+-- govulncheck --
+#!/bin/sh
+echo 'No vulnerabilities found.'
+-- want-args.txt --
+audit --json
+$REPO
+-- package.json --
+{"name":"app","dependencies":{"lodash":"4.17.20"}}
+-- package-lock.json --
+{"name":"app","lockfileVersion":3}
+-- go.mod --
+module example.com/app
+
+go 1.22
+-- want-report.md --
+---
+id: 6ae678-dependency-audit-2026-01-01
+kind: audit
+title: Dependency audit 2026-01-01
+created: 2026-01-01T00:00:00Z
+cites:
+  - path: package.json
+    blob: "f4d2ef6b1f7eb666e8e386fdd8ce077288edd60b"
+---
+# Dependency audit 2026-01-01
+
+The raw output of each ecosystem's audit tool, run by `lyceum audit` at the repo root. Nothing in it is parsed.
+
+## npm
+
+Manifests: package.json
+Command: `npm audit --json`
+Exit: 1
+
+```text
+{"vulnerabilities":{"lodash":{"severity":"high"}}}
+npm warn audit
+```
+
+## Summary
+

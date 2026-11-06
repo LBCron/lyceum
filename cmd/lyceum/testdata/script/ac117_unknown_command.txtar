@@ -1,0 +1,50 @@
+# AC117: an unknown command or a bad flag is a refusal (exit 2) with a Next: step; --version --json prints only {"version":…}
+cd $REPO
+
+# Unknown command, human.
+! exec lyceum nope
+! stdout .
+stderr '^Can''t run lyceum nope: unknown command "nope"$'
+stderr '^Next: run "lyceum" to see the commands$'
+
+# Unknown command, --json: one JSON object on stdout, nothing on stderr.
+! exec lyceum nope --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"unknown command \\"nope\\"","next":\["run \\"lyceum\\" to see the commands"\]\}\}$'
+! stderr .
+
+# Bad flag, human.
+! exec lyceum status --bogus
+! stdout .
+stderr '^Can''t run lyceum status: unknown flag: --bogus$'
+stderr '^Next: run "lyceum" to see the commands$'
+
+# Bad flag, --json (before and after the bad flag).
+! exec lyceum --json status --bogus
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"unknown flag: --bogus","next":\["run \\"lyceum\\" to see the commands"\]\}\}$'
+! stderr .
+! exec lyceum status --bogus --json
+jsonobject
+stdout '^\{"ok":false,"refusal":\{"reason":"unknown flag: --bogus","next":\["run \\"lyceum\\" to see the commands"\]\}\}$'
+! stderr .
+
+# Exit code is 2, not 1.
+exec sh -c 'lyceum nope; echo "exit=$?"'
+stdout '^exit=2$'
+exec sh -c 'lyceum --bogus; echo "exit=$?"'
+stdout '^exit=2$'
+
+# --version --json: stdout is exactly {"version":"<v>"}.
+exec lyceum --version --json
+jsonobject
+cmp stdout $WORK/version.json
+! stderr .
+
+# Plain --version is unchanged.
+exec lyceum --version
+stdout '^lyceum dev$'
+! stderr .
+
+-- version.json --
+{"version":"dev"}

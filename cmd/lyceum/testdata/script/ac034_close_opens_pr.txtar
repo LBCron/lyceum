@@ -1,0 +1,137 @@
+# AC34: given close with gh installed and a GitHub remote, then a PR is opened; given no gh, then the exact next command is printed
+# gh and glab here are fakes that record their arguments; the host's are hidden from scripts.
+cd $REPO
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec git remote add origin https://github.com/acme/app.git
+mkdir $WORK/bin
+cp $WORK/fake-gh $WORK/bin/gh
+cp $WORK/fake-glab $WORK/bin/glab
+chmod 0755 $WORK/bin/gh
+chmod 0755 $WORK/bin/glab
+env PATH=$WORK/bin${:}$PATH
+
+# A pushed branch on a GitHub remote, with gh: close runs gh pr create from the branch into the base.
+exec lyceum add doc 'Guide'
+mkdir docs
+cp $WORK/guide.md docs/guide.md
+exec git add -A
+exec git commit -q -m 'guide'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-guide$'
+exec git update-ref refs/remotes/origin/docs/6ae678-guide HEAD
+exec git branch -q --set-upstream-to=origin/docs/6ae678-guide
+exec lyceum close
+stdout '^Closed 6ae678-guide$'
+stdout '^https://github.com/acme/app/pull/1$'
+stdout '^Opened a pull request from docs/6ae678-guide into main with gh$'
+stdout '^Next: push the close commit so the pull request has it: git push; the owner merges the pull request$'
+cmp $WORK/gh-args.txt $WORK/want-gh-args.txt
+! grep '"type":"merge"' lyceum/events.jsonl
+
+# Not pushed: Lyceum does not push, so it prints the push and the gh command, and gh is not run.
+rm $WORK/gh-args.txt
+exec git switch -q main
+exec lyceum add doc 'Faq'
+mkdir docs
+cp $WORK/guide.md docs/faq.md
+exec git add -A
+exec git commit -q -m 'faq'
+exec lyceum test
+exec lyceum close
+stdout '^Closed 3f4fbd-faq$'
+stdout '^Branch docs/3f4fbd-faq has no upstream, and Lyceum does not push. Push it first:$'
+stdout '^  git push -u origin docs/3f4fbd-faq$'
+stdout '^  gh pr create --base main --head docs/3f4fbd-faq --title Faq --body ''Plan: lyceum/plan/3f4fbd-faq.md; ACs: none''$'
+stdout '^Next: git push -u origin docs/3f4fbd-faq, then run: gh pr create '
+! exists $WORK/gh-args.txt
+
+# A GitLab remote, with glab: close runs glab mr create.
+exec git switch -q main
+exec git remote set-url origin git@gitlab.com:acme/app.git
+exec lyceum add doc 'Notes'
+mkdir docs
+cp $WORK/guide.md docs/notes.md
+exec git add -A
+exec git commit -q -m 'notes'
+exec lyceum test
+exec git update-ref refs/remotes/origin/docs/e91b6e-notes HEAD
+exec git branch -q --set-upstream-to=origin/docs/e91b6e-notes
+exec lyceum close
+stdout '^Opened a pull request from docs/e91b6e-notes into main with glab$'
+cmp $WORK/glab-args.txt $WORK/want-glab-args.txt
+
+# No gh: the exact push and merge commands are printed.
+rm $WORK/bin/gh
+exec git switch -q main
+exec git remote set-url origin https://github.com/acme/app.git
+exec lyceum add doc 'Tips'
+mkdir docs
+cp $WORK/guide.md docs/tips.md
+exec git add -A
+exec git commit -q -m 'tips'
+exec lyceum test
+exec git update-ref refs/remotes/origin/docs/b88b73-tips HEAD
+exec git branch -q --set-upstream-to=origin/docs/b88b73-tips
+exec lyceum close
+stdout '^To push the branch:$'
+stdout '^  git push -u origin docs/b88b73-tips$'
+stdout '^Then open a pull request from docs/b88b73-tips into main; or, to merge without one, the owner runs:$'
+stdout '^  git switch main && git merge --no-ff docs/b88b73-tips && git push origin main$'
+! exists $WORK/gh-args.txt
+! grep '"type":"merge"' lyceum/events.jsonl
+
+-- testing.txt --
+testing
+-- t.sh --
+sh ./a_test.sh
+-- a_test.sh --
+true
+-- guide.md --
+# Guide
+-- fake-gh --
+#!/bin/sh
+printf '%s\n' "$@" > "$WORK/gh-args.txt"
+echo https://github.com/acme/app/pull/1
+-- fake-glab --
+#!/bin/sh
+printf '%s\n' "$@" > "$WORK/glab-args.txt"
+echo https://gitlab.com/acme/app/-/merge_requests/1
+-- want-gh-args.txt --
+pr
+create
+--base
+main
+--head
+docs/6ae678-guide
+--title
+Guide
+--body
+Plan: lyceum/plan/6ae678-guide.md; ACs: none
+-- want-glab-args.txt --
+mr
+create
+--source-branch
+docs/e91b6e-notes
+--target-branch
+main
+--title
+Notes
+--description
+Plan: lyceum/plan/e91b6e-notes.md; ACs: none
+--yes
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

@@ -1,0 +1,35 @@
+# A re-run of init that changes an existing OpenCode shim says to restart OpenCode's server, which keeps the plugin
+# it first loaded (distribution.md, "lyceum init" step 4). A first install or an unchanged shim says nothing.
+cd $REPO
+stdin $WORK/defaults.txt
+exec lyceum init --harness opencode
+stdout '^Created \.opencode/plugins/lyceum\.js$'
+stdout '^Wired OpenCode$'
+! stdout 'opencode serve'
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# Unchanged: no notice.
+exec lyceum init
+stdout '^Wired OpenCode$'
+! stdout 'opencode serve'
+
+# An older shim: init replaces it and says to restart the server.
+cp $WORK/old-plugin.js .opencode/plugins/lyceum.js
+exec lyceum init
+stdout '^Updated \.opencode/plugins/lyceum\.js$'
+stdout '(?m)^Wired OpenCode\n  restart OpenCode''s server \("opencode serve"\) so it loads the updated hook: a running server keeps the plugin it first loaded for this directory$'
+cmp .opencode/plugins/lyceum.js $TEMPLATES/opencode-plugin.js
+
+# Only OpenCode's shim: an updated Pi shim gives no OpenCode notice.
+exec lyceum init --harness pi
+cp $WORK/old-plugin.js .pi/extensions/lyceum.ts
+exec lyceum init
+stdout '^Updated \.pi/extensions/lyceum\.ts$'
+! stdout 'opencode serve'
+
+-- defaults.txt --
+
+
+-- old-plugin.js --
+// An older Lyceum shim.

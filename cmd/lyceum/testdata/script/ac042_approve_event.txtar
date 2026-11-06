@@ -1,0 +1,203 @@
+# AC42: a successful approve writes exactly one approve event with unit, gate, the sha256 of each approved file, commit, by, at and parent, and the plan frontmatter mirrors it
+# ttyrun runs the command on a pty, so stdin and stdout are both a terminal.
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+exec lyceum add feat 'CSV export'
+
+# The agent drafts the plan, naming area orders, and writes the area file.
+cp $WORK/plan.md lyceum/plan/6ae678-csv-export.md
+mkdir lyceum/spec
+cp $WORK/orders.md lyceum/spec/orders.md
+exec sh -c 'echo "| orders | spec/orders.md | Orders | |" >> lyceum/SPEC.md'
+exec git add -A
+exec git commit -q -m 'draft spec'
+exec git rev-parse --short HEAD
+cp stdout $WORK/approved-at.txt
+
+# The expected hashes. The plan is hashed without its CLI-owned approvals, gate and
+# status keys, its planned files: and its Progress and Log sections (basis.md), since approving rewrites the
+# first two and the agent keeps updating the sections; area files as they are.
+sha256file $WORK/basis.md
+stdout '^sha256:91ef6d8bede74e0b232062b04a4590c49cbeca011eb8fe3334e3f8d0337312c6$'
+sha256file lyceum/spec/orders.md
+stdout '^sha256:9509ba151a38f99f515f204d06a51ab513a72a3b6f6def4870f0c2ebc011b7e4$'
+
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+# The summary names every approved file with its sha256 (step 4).
+stderr '^Unit: 6ae678-csv-export$'
+stderr '^Gate: spec$'
+stderr '^  lyceum/plan/6ae678-csv-export.md sha256:91ef6d8bede74e0b232062b04a4590c49cbeca011eb8fe3334e3f8d0337312c6$'
+stderr '^  lyceum/spec/orders.md sha256:9509ba151a38f99f515f204d06a51ab513a72a3b6f6def4870f0c2ebc011b7e4$'
+stderr '^First approval of spec: no earlier approval to diff against.$'
+grep '^Approved spec for 6ae678-csv-export' $WORK/tty.out
+grep '^Gate: build' $WORK/tty.out
+
+# Exactly one approve event, with every field. commit is HEAD when approving: the
+# commit holding the approved files. parent is the process that ran approve, here sh.
+# spec is feat's code-opening gate, so the event carries the new status. Typed in a terminal, via is terminal.
+jsonl lyceum/events.jsonl 2
+grep -count=1 '"type":"approve"' lyceum/events.jsonl
+grep '^\{"ts":"2026-01-01T00:00:00Z","type":"approve","unit":"6ae678-csv-export","actor":"owner@example.com","commit":"[0-9a-f]{7,}","at":"2026-01-01T00:00:00Z","by":"owner@example.com","counts":true,"gate":"spec","hashes":\{"lyceum/SPEC.md":"sha256:[0-9a-f]{64}","lyceum/plan/6ae678-csv-export.md":"sha256:91ef6d8bede74e0b232062b04a4590c49cbeca011eb8fe3334e3f8d0337312c6","lyceum/spec/orders.md":"sha256:9509ba151a38f99f515f204d06a51ab513a72a3b6f6def4870f0c2ebc011b7e4"\},"parent":"(/bin/)?sh","status":"in-progress","via":"terminal"\}$' lyceum/events.jsonl
+exec sh -c 'grep -c "\"commit\":\"$(cat $WORK/approved-at.txt)\",\"at\"" lyceum/events.jsonl'
+stdout '^1$'
+
+# The plan mirrors the event in approvals, its gate moved to build, status moved to
+# in-progress, and every other byte kept. A commit of digits only is quoted, as YAML needs.
+exec sh -c 'c=$(cat $WORK/approved-at.txt); case $c in *[!0-9]*) ;; *) c="\"$c\"" ;; esac; sed "s/@COMMIT@/$c/" $WORK/want-plan.md'
+cp stdout $WORK/want-plan-commit.md
+cmp lyceum/plan/6ae678-csv-export.md $WORK/want-plan-commit.md
+
+# Event and plan are committed together on top of the approved commit.
+exec git status --porcelain
+! stdout .
+exec git log -1 --format=%s
+stdout '^lyceum: approve spec 6ae678-csv-export$'
+exec git show --format= --name-only HEAD
+cmp stdout $WORK/want-committed.txt
+exec git rev-parse --short HEAD~1
+cmp stdout $WORK/approved-at.txt
+
+# A later approval of the same gate shows the diff since this one (step 4). The
+# gate is reset by hand: reopening a gate is not built yet.
+exec sh -c 'sed "s/^gate: build$/gate: spec/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+cp $WORK/orders-v2.md lyceum/spec/orders.md
+exec git add -A
+exec git commit -q -m 'revise spec'
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+# The plan's hash is unchanged: only its CLI-owned approvals and gate changed since.
+stderr '^  lyceum/plan/6ae678-csv-export.md sha256:91ef6d8bede74e0b232062b04a4590c49cbeca011eb8fe3334e3f8d0337312c6$'
+stderr '^Changes since the last spec approval \(commit [0-9a-f]{7,}\):$'
+stderr '^diff --git a/lyceum/spec/orders.md b/lyceum/spec/orders.md$'
+stderr '^-AC1: export orders as CSV.$'
+stderr '^\+AC1: export orders as CSV, one row per order.$'
+grep -count=2 '"type":"approve"' lyceum/events.jsonl
+# The plan is already in-progress, so this approval moves no status.
+grep -count=1 '"type":"approve".*"status"' lyceum/events.jsonl
+grep '^status: in-progress$' lyceum/plan/6ae678-csv-export.md
+
+# The approval commit holds every approved file (step 7): an area file edited
+# and not committed is committed by the approval, as hashed. The gate is reset by
+# hand again, and that plan edit is not committed either.
+exec sh -c 'sed "s/^gate: build$/gate: spec/" lyceum/plan/6ae678-csv-export.md > plan.tmp && mv plan.tmp lyceum/plan/6ae678-csv-export.md'
+cp $WORK/orders-v3.md lyceum/spec/orders.md
+ttyrun $WORK/spec.txt 'lyceum approve spec'
+stdout '^exit=0$'
+stderr '^  lyceum/spec/orders.md sha256:cdb009ae62ac31dd0233470f5d0da59562bab65067c006c4e5d7c4494541215b$'
+grep -count=3 '"type":"approve"' lyceum/events.jsonl
+grep -count=1 '"lyceum/spec/orders.md":"sha256:cdb009ae62ac31dd0233470f5d0da59562bab65067c006c4e5d7c4494541215b"' lyceum/events.jsonl
+exec git status --porcelain
+! stdout .
+exec git show --format= --name-only HEAD
+cmp stdout $WORK/want-committed-v3.txt
+exec git show HEAD:lyceum/spec/orders.md
+cp stdout $WORK/committed-orders.md
+sha256file $WORK/committed-orders.md
+stdout '^sha256:cdb009ae62ac31dd0233470f5d0da59562bab65067c006c4e5d7c4494541215b$'
+
+-- spec.txt --
+spec
+-- orders.md --
+# Orders
+
+AC1: export orders as CSV.
+-- orders-v2.md --
+# Orders
+
+AC1: export orders as CSV, one row per order.
+-- orders-v3.md --
+# Orders
+
+AC1: export orders as CSV, one row per order, newest first.
+-- plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: planned
+gate: spec
+approvals: []
+areas: [orders]
+files: [src/orders/export.go]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+
+## Spec delta
+
+orders: AC1.
+
+## Steps
+
+## Progress
+
+## Log
+-- basis.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+areas: [orders]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+
+## Spec delta
+
+orders: AC1.
+
+## Steps
+
+-- want-plan.md --
+---
+id: 6ae678-csv-export
+type: feat
+title: CSV export
+branch: feat/6ae678-csv-export
+status: in-progress
+gate: build
+approvals:
+  - gate: spec
+    hashes:
+      lyceum/SPEC.md: sha256:08bc121774ae4f4c8e2052e31e6b38215e17c1a243d63966f9c823d641a4834f
+      lyceum/plan/6ae678-csv-export.md: sha256:91ef6d8bede74e0b232062b04a4590c49cbeca011eb8fe3334e3f8d0337312c6
+      lyceum/spec/orders.md: sha256:9509ba151a38f99f515f204d06a51ab513a72a3b6f6def4870f0c2ebc011b7e4
+    commit: @COMMIT@
+    by: owner@example.com
+    at: 2026-01-01T00:00:00Z
+areas: [orders]
+files: [src/orders/export.go]
+acs: [AC1]
+---
+
+## What and why
+
+Export orders as CSV.
+
+## Spec delta
+
+orders: AC1.
+
+## Steps
+
+## Progress
+
+## Log
+-- want-committed.txt --
+lyceum/events.jsonl
+lyceum/plan/6ae678-csv-export.md
+-- want-committed-v3.txt --
+lyceum/events.jsonl
+lyceum/plan/6ae678-csv-export.md
+lyceum/spec/orders.md

@@ -1,0 +1,58 @@
+# AC127: lyceum refactor "Split parser" starts a refactor unit at intent on a refactor/ branch; lyceum chore "Bump deps" starts a chore unit at build
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# A refactor starts like add: plan, branch from base, add event, one commit.
+exec lyceum refactor 'Split parser'
+! stderr .
+stdout '^Created lyceum/plan/[0-9a-f]{6}-split-parser\.md$'
+stdout '^Created branch refactor/[0-9a-f]{6}-split-parser from main$'
+stdout '^Gate: intent$'
+stdout '\nNext: draft the plan in lyceum/plan/[0-9a-f]{6}-split-parser\.md\n$'
+exec git branch --show-current
+stdout '^refactor/[0-9a-f]{6}-split-parser$'
+exec sh -c 'cat lyceum/plan/*-split-parser.md'
+stdout '^type: refactor$'
+stdout '^status: planned$'
+stdout '^gate: intent$'
+grep '"type":"add","unit":"[0-9a-f]{6}-split-parser",.*"branch":"refactor/[0-9a-f]{6}-split-parser","gate":"intent","status":"planned","unit_type":"refactor"\}$' lyceum/events.jsonl
+exec git log -1 --format=%s
+stdout '^lyceum: add refactor [0-9a-f]{6}-split-parser$'
+exec git status --porcelain
+! stdout .
+exec lyceum check
+stdout '^No findings$'
+
+# One unit per checkout: a second start on this branch refuses, naming the command.
+! exec lyceum chore 'Bump deps'
+stderr '^Next: finish [0-9a-f]{6}-split-parser first, or check out another branch and run lyceum chore there$'
+
+# A chore starts trivial at build, in progress, on a chore/ branch.
+exec git switch -q main
+exec lyceum chore 'Bump deps'
+stdout '^Created branch chore/[0-9a-f]{6}-bump-deps from main$'
+stdout '^Gate: build$'
+exec sh -c 'cat lyceum/plan/*-bump-deps.md'
+stdout '^type: chore$'
+stdout '^status: in-progress$'
+stdout '^gate: build$'
+grep '"type":"add","unit":"[0-9a-f]{6}-bump-deps",.*"branch":"chore/[0-9a-f]{6}-bump-deps","gate":"build","status":"in-progress","unit_type":"chore"\}$' lyceum/events.jsonl
+exec lyceum check
+stdout '^No findings$'
+
+# The same refusals as add: no title, a split title, a dirty tree.
+exec git switch -q main
+! exec lyceum refactor
+stderr '^Can''t add a unit: no title given$'
+stderr '^Next: run lyceum refactor "<title>"$'
+! exec lyceum chore Bump deps
+stderr '^Next: quote the title: lyceum chore "Bump deps"$'
+cp $WORK/note.txt note.txt
+! exec lyceum chore 'Tidy'
+stderr '^Can''t add a unit: the working tree has uncommitted changes:$'
+stderr '^Next: commit them: git add -A && git commit -m "<message>", then run lyceum chore again$'
+
+-- note.txt --
+note

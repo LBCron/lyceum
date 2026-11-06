@@ -1,0 +1,120 @@
+# The pre-tool hook's edge rules: unknown or missing --harness refuses; an unreadable payload is allowed with
+# a warning; writes are allowed outside a git repo, where Lyceum is not set up, and on a branch with no unit; a
+# relative path is taken from the payload's cwd, or the hook's; test files are allowed at a gate that allows them.
+
+# An unknown or missing --harness is a refusal, exit 2, whatever stdin holds.
+payload claude/write.json $WORK/p.json
+stdin $WORK/p.json
+! exec lyceum hook pre-tool --harness gemini
+! stdout .
+stderr '^Can''t run the pre-tool hook: unknown harness "gemini"$'
+stderr '^Next: pass --harness with one of: claude, codex, commandcode, opencode, pi$'
+stdin $WORK/p.json
+! exec lyceum hook pre-tool
+stderr '^Can''t run the pre-tool hook: --harness is missing$'
+! exec lyceum hook
+stderr '^Can''t run lyceum hook: hook needs an event$'
+stderr '^Next: run "lyceum hook pre-tool --harness <name>"$'
+! exec lyceum hook pre-write src/a.go
+stderr '^Can''t run lyceum hook pre-write: unknown command "pre-write"$'
+
+# Not a git repo: writes are allowed; lyceum approve is still denied.
+mkdir $WORK/plain
+cd $WORK/plain
+payload pi/write.json $WORK/p.json /repo/note.txt=src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+! stderr .
+payload pi/shell.json $WORK/p.json
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this command: '
+
+# A git repo where Lyceum is not set up: writes are allowed.
+cd $REPO
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.ts
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# Set up, on main with no unit: writes are allowed.
+exec lyceum init
+cp $WORK/TESTING.md TESTING.md
+exec git add -A
+exec git commit -q -m 'lyceum init'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+# A payload the hook can't read is allowed, with a warning on stderr, exit 0.
+exec lyceum add bug 'Crash on save'
+stdout '^Gate: repro$'
+stdin $WORK/garbage.txt
+exec lyceum hook pre-tool --harness claude
+! stdout .
+stderr '^lyceum hook: allowed a tool call it could not read: claude pre-tool payload: '
+stdin $WORK/garbage.txt
+exec lyceum hook pre-tool --harness opencode
+stdout '^\{"decision":"allow"\}$'
+stderr '^lyceum hook: allowed a tool call it could not read: opencode pre-tool payload: '
+stdin $WORK/nopath.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+stderr '^lyceum hook: allowed a tool call it could not read: claude pre-tool payload: Write call without tool_input.file_path$'
+
+# A bug at repro: test files (TESTING.md test_files) are allowed, code is denied until repro clears.
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x_test.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+payload claude/write.json $WORK/p.json /repo/note.txt=/repo/src/x.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout '"permissionDecisionReason":"Lyceum blocked this write: src/x\.go is code, and unit [0-9a-f]{6}-crash-on-save has not cleared its repro gate\. Next: write the failing repro test first \(test files are allowed now\); code waits until the repro gate clears\. '
+
+# Relative paths: from the payload's cwd (Claude Code), or the hook's own (Pi). A subdirectory cwd counts.
+mkdir src/sub
+payload claude/write.json $WORK/p.json '"cwd": "/repo"="cwd": "/repo/src"' /repo/note.txt=sub/y.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+stdout 'src/sub/y\.go is code'
+cd src
+payload pi/write.json $WORK/p.json /repo/note.txt=../a.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"deny","reason":"Lyceum blocked this write: a\.go is code, '
+payload pi/write.json $WORK/p.json /repo/note.txt=../../outside.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness pi
+stdout '^\{"decision":"allow"\}$'
+
+# A Codex patch is denied when any path it writes is code, and names each.
+cd $REPO
+payload codex/edit.json $WORK/p.json '/repo/src/a.txt=/repo/docs/a.md\n*** Move to: /repo/src/b.go\n*** Delete File: /repo/src/c.go'
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness codex
+stdout 'Lyceum blocked this write: src/b\.go, src/c\.go are code, '
+
+# Tools that neither write nor run a shell are allowed.
+payload claude/write.json $WORK/p.json '"Write"="Read"' /repo/note.txt=/repo/src/x.go
+stdin $WORK/p.json
+exec lyceum hook pre-tool --harness claude
+! stdout .
+! stderr .
+
+-- TESTING.md --
+---
+lyceum: 1
+suite: go test ./...
+single: go test ./... -run '{name}'
+test_files: ["**/*_test.go"]
+---
+
+# TESTING.md
+-- garbage.txt --
+not a payload
+-- nopath.json --
+{"cwd":"/tmp","tool_name":"Write","tool_input":{"content":"hi"}}

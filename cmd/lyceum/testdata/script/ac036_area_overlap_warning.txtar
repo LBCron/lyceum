@@ -1,0 +1,86 @@
+# AC36: given another branch with an open unit naming area orders, when the plan names orders, then a warning names that branch and the command still succeeds
+# A new plan names no area yet, so add is silent; close, with the plan's final areas:, warns.
+cd $REPO
+exec lyceum init
+exec lyceum plan --new-area orders
+exec lyceum plan --new-area billing
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/a_test.sh a_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# Another branch holds an open feat naming orders.
+exec lyceum add feat 'Orders export'
+linesub lyceum/plan/6ae678-orders-export.md $WORK/plan.md 'approvals: []' 'areas: [orders]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/6ae678-orders-export.md
+exec git commit -q -am 'areas'
+exec git switch -q main
+
+# add is silent: its plan names no area.
+exec lyceum add doc 'Orders guide'
+! stderr 'Warning'
+
+# The doc names orders and billing: close warns, naming the branch and the unit, and still closes.
+linesub lyceum/plan/3f4fbd-orders-guide.md $WORK/plan.md 'approvals: []' 'areas: [billing, orders]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/3f4fbd-orders-guide.md
+mkdir docs
+cp $WORK/guide.md docs/orders.md
+exec git add -A
+exec git commit -q -m 'guide'
+exec lyceum test
+exec lyceum close
+stderr '^Warning: unit 6ae678-orders-export on branch feat/6ae678-orders-export is open and names area orders too; changes to one area on two branches may conflict$'
+stdout '^Closed 3f4fbd-orders-guide$'
+grep '^status: closed$' lyceum/plan/3f4fbd-orders-guide.md
+
+# The other branch only as a remote-tracking branch: still read, still a warning.
+exec git switch -q main
+exec git update-ref refs/remotes/origin/feat/6ae678-orders-export feat/6ae678-orders-export
+exec git branch -q -D feat/6ae678-orders-export
+exec lyceum add doc 'Orders faq'
+# 6ae678 is taken on the remote-tracking branch, so add drew another hash (AC7).
+linesub lyceum/plan/e91b6e-orders-faq.md $WORK/plan.md 'approvals: []' 'areas: [orders]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/e91b6e-orders-faq.md
+mkdir docs
+cp $WORK/guide.md docs/faq.md
+exec git add -A
+exec git commit -q -m 'faq'
+exec lyceum test
+exec lyceum close
+stderr '^Warning: unit 6ae678-orders-export on branch feat/6ae678-orders-export is open and names area orders too'
+stdout '^Closed e91b6e-orders-faq$'
+
+# A closed unit, or one naming other areas, is no warning.
+exec git switch -q main
+exec lyceum add doc 'Billing faq'
+linesub lyceum/plan/b88b73-billing-faq.md $WORK/plan.md 'approvals: []' 'areas: [billing]\napprovals: []'
+cp $WORK/plan.md lyceum/plan/b88b73-billing-faq.md
+mkdir docs
+cp $WORK/guide.md docs/billing.md
+exec git add -A
+exec git commit -q -m 'billing faq'
+exec lyceum test
+exec lyceum close
+! stderr 'Warning'
+stdout '^Closed b88b73-billing-faq$'
+
+-- testing.txt --
+testing
+-- t.sh --
+sh ./a_test.sh
+-- a_test.sh --
+true
+-- guide.md --
+# Guide
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md

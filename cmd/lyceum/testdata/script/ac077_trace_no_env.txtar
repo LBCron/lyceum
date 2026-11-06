@@ -1,0 +1,66 @@
+# AC77: given trace full-run with no environment in TESTING.md, then the CLI refuses the full run and offers code-only
+cd $REPO
+exec lyceum init
+exec git add -A
+exec git commit -q -m 'lyceum init'
+
+# No TESTING.md: refused, offering code-only; nothing runs.
+! exec lyceum trace --run test --trigger 'touch triggered' 'how is an order placed?'
+! stdout .
+stderr '^Can''t run the trace: a full run needs an environment declared in an approved TESTING.md, and it does not exist$'
+stderr '^Next: or trace code-only: lyceum trace "<question>", then read the flow and mark each step \[read\]$'
+! exists triggered
+
+# An approved TESTING.md with no environments: refused, offering code-only.
+cp $WORK/TESTING.md TESTING.md
+exec git add TESTING.md
+exec git commit -q -m 'testing'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+! exec lyceum trace --run test --trigger 'touch triggered' --yes 'how is an order placed?'
+stderr '^Can''t run the trace: TESTING.md defines no environments, so there is nothing to run the trace against$'
+stderr '^Next: or trace code-only: lyceum trace "<question>", then read the flow and mark each step \[read\]$'
+! exists triggered
+! exists .lyceum/traces
+! exec lyceum trace --json --run test --trigger 'touch triggered' 'how is an order placed?'
+jsonobject
+stdout '"next":\["or trace code-only: '
+
+# An environment that is defined, but not the one named: refused, listing the defined ones.
+cp $WORK/TESTING-env.md TESTING.md
+exec git commit -q -am 'staging env'
+! exec lyceum trace --run test --trigger 'touch triggered' --yes 'how is an order placed?'
+stderr '^Can''t run the trace: TESTING.md changed after it was approved, so its environments can''t be run$'
+stderr '^Next: run "lyceum approve testing" yourself in a terminal$'
+stderr '^Next: or trace code-only: '
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+! exec lyceum trace --run test --trigger 'touch triggered' --yes 'how is an order placed?'
+stderr '^Can''t run the trace: TESTING.md defines no environment "test"; the defined environments are: staging$'
+stderr '^Next: run lyceum trace --run <env> with one of: staging$'
+stderr '^Next: or trace code-only: '
+! exists triggered
+! exists .lyceum/traces
+
+# Code-only is always there: trace without --run looks up records and runs nothing.
+exec lyceum trace 'how is an order placed?'
+stdout '^Question: how is an order placed\?$'
+! exists triggered
+
+-- testing.txt --
+testing
+-- TESTING.md --
+---
+lyceum: 1
+suite: true
+---
+-- TESTING-env.md --
+---
+lyceum: 1
+suite: true
+environments:
+  staging:
+    up: touch up-ran
+---

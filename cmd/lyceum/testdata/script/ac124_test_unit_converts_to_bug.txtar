@@ -1,0 +1,97 @@
+# AC124: given a test unit whose test fails, when close runs, then the test unit is closed with converted_to, a bug unit exists on the same branch with that test as its repro, and the bug is at diagnose
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/calc.sh src/calc.sh
+cp $WORK/calc_test.sh src/calc_test.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum add test 'Add zero'
+
+# With no failing run of the new test, close needs run.
+cp $WORK/zero_test.sh src/zero_test.sh
+exec git add -A
+exec git commit -q -m 'new test'
+! exec lyceum close
+stderr '^Can''t close 6ae678-add-zero: unit 6ae678-add-zero is at gate write, and close needs its run gate cleared first$'
+stderr '^Next: finish the write work described in the plan, then run "lyceum test"$'
+
+# The new test fails on the current code: lyceum test points at close.
+! exec lyceum test
+stderr '^Next: to keep it as a bug: run "lyceum close", which closes this unit and starts a bug on this branch with this test as its repro$'
+
+# close converts it: the test unit is closed with converted_to, and a bug on the same branch is at diagnose.
+exec lyceum close
+stdout '^Closed 6ae678-add-zero: its new test fails on the current code \(\.lyceum/runs/\S+\.out\), so it is now bug 3f4fbd-add-zero with that test as its repro$'
+stdout '^Created lyceum/plan/3f4fbd-add-zero.md$'
+stdout '^Cleared repro for 3f4fbd-add-zero$'
+stdout '^Unit: 3f4fbd-add-zero$'
+stdout '^Gate: diagnose$'
+! stdout 'pull request'
+grep '^status: closed$' lyceum/plan/6ae678-add-zero.md
+grep '^gate: close$' lyceum/plan/6ae678-add-zero.md
+grep '^type: bug$' lyceum/plan/3f4fbd-add-zero.md
+grep '^branch: test/6ae678-add-zero$' lyceum/plan/3f4fbd-add-zero.md
+grep '^gate: diagnose$' lyceum/plan/3f4fbd-add-zero.md
+grep '^status: in-progress$' lyceum/plan/3f4fbd-add-zero.md
+grep -count=1 '"type":"close","unit":"6ae678-add-zero",.*"converted_to":"3f4fbd-add-zero","status":"closed"\}$' lyceum/events.jsonl
+grep -count=1 '"type":"add","unit":"3f4fbd-add-zero",.*"branch":"test/6ae678-add-zero","gate":"repro","status":"planned","unit_type":"bug"\}$' lyceum/events.jsonl
+grep -count=1 '"type":"gate-clear","unit":"3f4fbd-add-zero",.*"fingerprint":\{"src/zero_test.sh":"sha256:[0-9a-f]{64}"\},"gate":"repro","run":\{.*"subset":null,.*"exit":1,.*\},"status":"in-progress"\}$' lyceum/events.jsonl
+exec git log -2 --format=%s
+stdout '^lyceum: clear repro 3f4fbd-add-zero$'
+stdout '^lyceum: close 6ae678-add-zero, converted to bug 3f4fbd-add-zero$'
+exec git status --porcelain
+! stdout .
+
+# status shows the bug as the branch's unit, and check replays both units: no failing finding.
+exec lyceum status
+stdout '^\*\s+3f4fbd-add-zero\s+bug\s+test/6ae678-add-zero\s+in-progress\s+diagnose\s+repro\s'
+! stdout '6ae678-add-zero\s+test'
+exec lyceum check --ci
+! stdout '^fail:'
+
+# The bug goes on: the fix makes the repro test pass, verify clears, and approve cause names the repro test.
+exec sh -c 'printf "\n## Root cause\n\nadd ignored a zero.\n" >> lyceum/plan/3f4fbd-add-zero.md'
+cp $WORK/calc-fixed.sh src/calc.sh
+exec git commit -q -am 'root cause and fix'
+exec lyceum test
+stdout '^Cleared verify for 3f4fbd-add-zero$'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+stderr '^Repro test: src/zero_test.sh$'
+stderr '^--- FAIL: TestAddZero$'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+for f in src/*_test.sh; do sh "$f" || exit 1; done
+-- calc.sh --
+add() { [ "$2" = 0 ] && { echo 0; return; }; echo $(($1 + $2)); }
+-- calc-fixed.sh --
+add() { echo $(($1 + $2)); }
+-- calc_test.sh --
+# TestAdd
+. ./src/calc.sh
+[ "$(add 1 2)" = 3 ] || { echo "--- FAIL: TestAdd"; exit 1; }
+-- zero_test.sh --
+# TestAddZero
+. ./src/calc.sh
+[ "$(add 5 0)" = 5 ] || { echo "--- FAIL: TestAddZero"; exit 1; }
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/{name}.sh
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
