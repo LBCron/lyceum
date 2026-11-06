@@ -3,7 +3,7 @@ id: 15baed-readme-one-command-per-install-block
 type: doc
 title: 'README: one command per install block'
 branch: docs/15baed-readme-one-command-per-install-block
-status: implemented
+status: closed
 gate: close
 approvals: []
 ---
