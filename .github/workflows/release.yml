@@ -62,7 +62,7 @@ jobs:
           - { platform: linux-x64, runner: ubuntu-24.04, os: linux, arch: amd64 }
           - { platform: linux-arm64, runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
           - { platform: darwin-x64, runner: macos-15-intel, os: darwin, arch: amd64 }
-          - { platform: darwin-arm64, runner: macos-14, os: darwin, arch: arm64 }
+          - { platform: darwin-arm64, runner: macos-15, os: darwin, arch: arm64 }
     runs-on: ${{ matrix.runner }}
     name: verify ${{ matrix.platform }}
     steps:
