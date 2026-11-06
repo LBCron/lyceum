@@ -55,15 +55,22 @@ tags() {
 		END { for (t in plain) print t, (t in peeled ? peeled[t] : plain[t]) }'
 }
 
-# major_release vN: the vN.x.y release the moving vN tag points at (the release
-# job moves vN only after that release is built and verified).
+# major_release vN: the release the moving vN tag points at (the release job
+# moves vN only after that release is built and verified). Of the vN.x.y and
+# vN.x.y-<pre> tags at vN's commit, the highest stable one wins, else the highest
+# prerelease by semver precedence.
 major_release() {
-	local list commit
+	local list commit at stable
 	list="$(tags)" || fail "cannot list the tags of $git_url"
 	commit="$(awk -v t="$1" '$1 == t { print $2 }' <<<"$list")"
 	[ -n "$commit" ] || fail "no tag $1 in $git_url"
-	awk -v c="$commit" -v m="$1" '$2 == c && index($1, m ".") == 1 && $1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+$/ { print $1 }' <<<"$list" |
-		sort -V | tail -n 1 | grep . || fail "tag $1 points at no $1.x.y release"
+	at="$(awk -v c="$commit" -v m="$1" '$2 == c && index($1, m ".") == 1 && $1 ~ /^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/ { print $1 }' <<<"$list")"
+	stable="$(grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' <<<"$at" || true)"
+	if [ -n "$stable" ]; then
+		sort -V <<<"$stable" | tail -n 1
+	else
+		highest_semver <<<"$at" | grep . || fail "tag $1 points at no $1.x.y release"
+	fi
 }
 
 # latest_major: the highest vN tag.
@@ -81,11 +88,9 @@ no_major() {
 	! awk '$1 ~ /^v[0-9]+$/ { found = 1 } END { exit !found }' <<<"$list"
 }
 
-# newest_release: the highest vX.Y.Z[-pre] tag by semver precedence, prereleases
-# included (1.0.0-rc.2 > 1.0.0-rc.1, 1.0.0 > 1.0.0-rc.9). Used only while no vN tag exists.
-newest_release() {
-	local list
-	list="$(tags)" || fail "cannot list the tags of $git_url"
+# highest_semver: of the vX.Y.Z[-pre] tags on stdin, one per line, the highest by
+# semver precedence (1.0.0-rc.10 > 1.0.0-rc.9, 1.0.0 > 1.0.0-rc.9); prints nothing for none.
+highest_semver() {
 	awk '
 		function ident(a, b) {
 			if (a ~ /^[0-9]+$/ && b ~ /^[0-9]+$/) return (a + 0 > b + 0) - (a + 0 < b + 0)
@@ -107,7 +112,15 @@ newest_release() {
 			v = substr($1, 2)
 			if (best == "" || cmp(v, best) > 0) best = v
 		}
-		END { if (best != "") print "v" best }' <<<"$list" | grep . || fail "no release tag (vX.Y.Z) in $git_url"
+		END { if (best != "") print "v" best }'
+}
+
+# newest_release: the highest vX.Y.Z[-pre] tag by semver precedence, prereleases
+# included. Used only while no vN tag exists.
+newest_release() {
+	local list
+	list="$(tags)" || fail "cannot list the tags of $git_url"
+	highest_semver <<<"$list" | grep . || fail "no release tag (vX.Y.Z) in $git_url"
 }
 
 want="${LYCEUM_VERSION:-}"
