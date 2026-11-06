@@ -3,7 +3,7 @@ id: 4108b4-check-ci-finds-no-unit-on-a-pull-request
 type: bug
 title: check --ci finds no unit on a pull request's merge checkout
 branch: fix/4108b4-check-ci-finds-no-unit-on-a-pull-request
-status: implemented
+status: closed
 gate: close
 files: [internal/cli/check.go]
 acs: [AC184]
