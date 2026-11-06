@@ -13,6 +13,7 @@ stdout '"brownfield":true'
 # Committed code counts too, and a manifest in a subfolder (go.mod here).
 exec git init -q -b main $WORK/go
 exec git -C $WORK/go config user.email owner@example.com
+exec git -C $WORK/go config user.name "Test Owner"
 cd $WORK/go
 mkdir svc
 cp $WORK/go.mod svc/go.mod
@@ -25,6 +26,7 @@ stdout '^Brownfield: this repo already has code \(svc/go\.mod\)\. '
 # A manifest with no source beside it, source with no manifest, or only docs: greenfield.
 exec git init -q -b main $WORK/manifest
 exec git -C $WORK/manifest config user.email owner@example.com
+exec git -C $WORK/manifest config user.name "Test Owner"
 cd $WORK/manifest
 cp $WORK/package.json package.json
 cp $WORK/package.json package-lock.json
@@ -37,6 +39,7 @@ stdout '"brownfield":false'
 
 exec git init -q -b main $WORK/nomanifest
 exec git -C $WORK/nomanifest config user.email owner@example.com
+exec git -C $WORK/nomanifest config user.name "Test Owner"
 cd $WORK/nomanifest
 cp $WORK/index.js index.js
 exec lyceum init
@@ -45,6 +48,7 @@ exec lyceum init
 # Ignored files are not source.
 exec git init -q -b main $WORK/ignored
 exec git -C $WORK/ignored config user.email owner@example.com
+exec git -C $WORK/ignored config user.name "Test Owner"
 cd $WORK/ignored
 cp $WORK/package.json package.json
 cp $WORK/ignore .gitignore
