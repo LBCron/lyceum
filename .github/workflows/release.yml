@@ -2,8 +2,9 @@
 # archives and checksums.txt to the GitHub release and writes the brew cask to
 # oritromax/homebrew-tap; then the npm packages are published (platform
 # packages first, the lyceum shim last); then each archive is checked on its
-# own platform (AC85); a stable release then moves its major tag (v1), which
-# check-action@v1 resolves to the release it points at.
+# own platform (AC85); then the release may move its major tag (v1), which
+# check-action@v1 resolves to the release it points at: until a stable vN.x.y
+# exists vN follows the newest prerelease, from then on only stable releases.
 name: release
 
 on:
@@ -62,7 +63,7 @@ jobs:
           - { platform: linux-x64, runner: ubuntu-24.04, os: linux, arch: amd64 }
           - { platform: linux-arm64, runner: ubuntu-24.04-arm, os: linux, arch: arm64 }
           - { platform: darwin-x64, runner: macos-15-intel, os: darwin, arch: amd64 }
-          - { platform: darwin-arm64, runner: macos-14, os: darwin, arch: arm64 }
+          - { platform: darwin-arm64, runner: macos-15, os: darwin, arch: arm64 }
     runs-on: ${{ matrix.runner }}
     name: verify ${{ matrix.platform }}
     steps:
@@ -85,8 +86,7 @@ jobs:
 
   major-tag:
     needs: verify
-    # Stable releases only: a prerelease (v1.0.0-rc.1) never moves v1.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # Every v* tag: the step decides whether this release moves vN.
     runs-on: ubuntu-24.04
     permissions:
       contents: write # move the major tag
@@ -98,8 +98,40 @@ jobs:
         run: |
           set -eu
           major="${GITHUB_REF_NAME%%.*}"
-          # Only the highest stable vN.x.y moves vN: a patch to an older minor leaves it.
-          highest="$(git tag -l "$major.*.*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+          case "$GITHUB_REF_NAME" in
+            *-*)
+              # A prerelease moves vN only while no stable vN.x.y exists, and only
+              # when it is the highest vN.* prerelease by semver precedence
+              # (rc.10 > rc.9; same comparison as check-action/run.sh).
+              if git tag -l "$major.*.*" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "$GITHUB_REF_NAME is a prerelease and $major has a stable release; $major stays"
+                exit 0
+              fi
+              highest="$(git tag -l "$major.*.*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$' | awk '
+                function ident(a, b) {
+                  if (a ~ /^[0-9]+$/ && b ~ /^[0-9]+$/) return (a + 0 > b + 0) - (a + 0 < b + 0)
+                  if (a ~ /^[0-9]+$/) return -1
+                  if (b ~ /^[0-9]+$/) return 1
+                  return (a > b) - (a < b)
+                }
+                function cmp(a, b,   pa, pb, ca, cb, xa, xb, na, nb, i, c) {
+                  pa = index(a, "-"); pb = index(b, "-")
+                  ca = pa ? substr(a, 1, pa - 1) : a; cb = pb ? substr(b, 1, pb - 1) : b
+                  split(ca, xa, "."); split(cb, xb, ".")
+                  for (i = 1; i <= 3; i++) if ((c = ident(xa[i], xb[i])) != 0) return c
+                  if (!pa || !pb) return (!pa) - (!pb)
+                  na = split(substr(a, pa + 1), xa, "."); nb = split(substr(b, pb + 1), xb, ".")
+                  for (i = 1; i <= na && i <= nb; i++) if ((c = ident(xa[i], xb[i])) != 0) return c
+                  return (na > nb) - (na < nb)
+                }
+                { v = substr($1, 2); if (best == "" || cmp(v, best) > 0) best = v }
+                END { if (best != "") print "v" best }')"
+              ;;
+            *)
+              # Only the highest stable vN.x.y moves vN: a patch to an older minor leaves it.
+              highest="$(git tag -l "$major.*.*" | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)"
+              ;;
+          esac
           if [ "$highest" != "$GITHUB_REF_NAME" ]; then
             echo "$GITHUB_REF_NAME is not the highest $major release ($highest); $major stays"
             exit 0

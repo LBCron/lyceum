@@ -108,6 +108,25 @@ env LYCEUM_VERSION=
 env LYCEUM_ACTION_REF=v1
 env LYCEUM_ACTION_GIT_URL=$WORK/tags
 
+# Before the first stable vN.x.y the release job moves vN to the newest prerelease:
+# v1 on a commit tagged only v1.0.0-rc.3 runs that rc; once the same commit is also
+# tagged v1.0.0, v1 runs the stable release.
+exec git init -q $WORK/rctags
+exec git -C $WORK/rctags -c user.name=t -c user.email=t@t commit -q --allow-empty -m one
+exec git -C $WORK/rctags tag v1.0.0-rc.2
+exec git -C $WORK/rctags -c user.name=t -c user.email=t@t commit -q --allow-empty -m two
+exec git -C $WORK/rctags tag v1.0.0-rc.3
+exec git -C $WORK/rctags tag v1
+env LYCEUM_ACTION_GIT_URL=$WORK/rctags
+exec bash $CHECK_ACTION/run.sh
+stdout '^lyceum check-action: v1\.0\.0-rc\.3 \(lyceum_1\.0\.0-rc\.3_linux_amd64\.tar\.gz\)$'
+stdout '^stub 1\.0\.0-rc\.3 linux_amd64: check --ci$'
+exec git -C $WORK/rctags tag v1.0.0
+exec bash $CHECK_ACTION/run.sh
+stdout '^stub 1\.0\.0 linux_amd64: check --ci$'
+! stdout 'rc\.3'
+env LYCEUM_ACTION_GIT_URL=$WORK/tags
+
 # The job's status is check's: 0 passes, any other code comes back unchanged.
 env STUB_EXIT=0
 exec bash $WORK/status.sh $WORK/code bash $CHECK_ACTION/run.sh
@@ -203,7 +222,7 @@ release() {
 	done
 }
 release v0.9.0 - bad
-for t in v1.0.0 v1.1.0 v1.2.0-rc.1 v2.0.0 v1.0.0-rc.1 v1.0.0-rc.2 v1.0.0-rc.9 v1.0.0-rc.10 v1.1.0-rc.1; do
+for t in v1.0.0 v1.1.0 v1.2.0-rc.1 v2.0.0 v1.0.0-rc.1 v1.0.0-rc.2 v1.0.0-rc.9 v1.0.0-rc.10 v1.1.0-rc.1 v1.0.0-rc.3; do
 	release "$t" -
 done
 release v3.0.0 "$(command -v lyceum-published)"

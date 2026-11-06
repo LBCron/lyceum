@@ -65,8 +65,9 @@ platform. Require the check in branch protection: without that, CI only reports.
 
 Which release runs:
 
-- `@v1` runs the release the `v1` tag points at. The release workflow moves `v1` to each new `v1.x.y` release
-  after its archives are verified, never to a prerelease, so `@v1` is the latest stable v1.
+- `@v1` runs the release the `v1` tag points at. The release workflow moves `v1` to each new release after its
+  archives are verified: until a stable `v1.x.y` exists, to the newest prerelease (`v1.0.0-rc.3`); from then on,
+  only to the newest stable `v1.x.y`, so `@v1` is the latest stable v1.
 - `@v1.2.3` (or `@v1.0.0-rc.1`) runs exactly that release.
 - Any other ref (a branch, a commit) runs the release of the highest major tag.
 - The `version` input (`latest`, `v1` or `v1.2.3`) overrides the ref.
