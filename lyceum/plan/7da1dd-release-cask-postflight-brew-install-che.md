@@ -3,7 +3,7 @@ id: 7da1dd-release-cask-postflight-brew-install-che
 type: chore
 title: 'release: cask postflight, brew install checked before the tap'
 branch: chore/7da1dd-release-cask-postflight-brew-install-che
-status: implemented
+status: closed
 gate: close
 files: [.goreleaser.yaml, .github/workflows/release.yml]
 approvals:
