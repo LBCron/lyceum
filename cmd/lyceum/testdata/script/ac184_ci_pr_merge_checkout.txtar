@@ -1,0 +1,80 @@
+# AC184: given a pull request's merge commit checked out with a detached HEAD and GITHUB_HEAD_REF naming the PR's branch, when check --ci runs, then it finds that branch's unit; locally, or with no GITHUB_HEAD_REF, nothing changes
+# stdin is the pty (ttyin -stdin) and stdout is sent to it too (/dev/tty), so both are a terminal.
+cd $REPO
+exec lyceum init
+mkdir src
+cp $WORK/TESTING.md TESTING.md
+cp $WORK/t.sh t.sh
+cp $WORK/login-broken.sh src/login.sh
+exec git add -A
+exec git commit -q -m 'setup'
+ttyin -stdin $WORK/testing.txt
+exec sh -c 'lyceum approve testing >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+
+# A bug that changes code, run to close on its branch.
+exec lyceum add bug 'Login plus'
+cp $WORK/login_test.sh src/login_test.sh
+exec git add -A
+exec git commit -q -m 'repro test'
+exec lyceum test --repro TestLoginPlus
+stdout '^Cleared repro for 6ae678-login-plus$'
+exec sh -c 'printf "\n## Root cause\n\nlogin_plus returned the wrong value.\n" >> lyceum/plan/6ae678-login-plus.md'
+cp $WORK/login-fixed.sh src/login.sh
+exec git commit -q -am 'root cause and fix'
+exec lyceum test
+stdout '^Cleared verify for 6ae678-login-plus$'
+ttyin -stdin $WORK/cause.txt
+exec sh -c 'lyceum approve cause >/dev/tty; echo "exit=$?"'
+stdout '^exit=0$'
+exec lyceum close
+stdout '^Closed 6ae678-login-plus$'
+exec lyceum check --ci
+! stdout '^fail:'
+
+# The pull request's merge checkout: the branch merged into main, HEAD detached, main unchanged.
+exec git checkout -q --detach main
+exec git merge -q --no-ff -m 'Merge fix/6ae678-login-plus into main' fix/6ae678-login-plus
+exec git branch --show-current
+! stdout .
+
+# GitHub sets GITHUB_HEAD_REF on pull_request events: check --ci finds the branch's closed unit and passes.
+env GITHUB_HEAD_REF=fix/6ae678-login-plus
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=0$'
+! stderr 'no-unit'
+! stderr 'fail:'
+
+# Locally the variable is not read: still no unit, a warning.
+exec lyceum check
+stdout '^fail: no-unit: the branch has no unit and changes code, a manifest, a lockfile or CI config: src/login.sh, src/login_test.sh$'
+
+# No GITHUB_HEAD_REF in CI: as before, no unit, and it fails.
+env GITHUB_HEAD_REF=
+exec sh -c 'lyceum check --ci; echo "exit=$?"'
+stdout '^exit=2$'
+stderr '^  fail: no-unit: the branch has no unit and changes code, a manifest, a lockfile or CI config: src/login.sh, src/login_test.sh$'
+
+-- testing.txt --
+testing
+-- cause.txt --
+cause
+-- t.sh --
+sh ./src/login_test.sh TestLoginPlus
+-- login-broken.sh --
+login_plus() { echo broken; }
+-- login-fixed.sh --
+login_plus() { echo ok; }
+-- login_test.sh --
+# TestLoginPlus
+. ./src/login.sh
+if [ "$(login_plus)" = ok ]; then echo "ok $1"; else echo "--- FAIL: $1"; exit 1; fi
+-- TESTING.md --
+---
+lyceum: 1
+suite: sh ./t.sh
+single: sh ./src/login_test.sh {name}
+test_files: ["**/*_test.sh"]
+---
+
+# TESTING.md
