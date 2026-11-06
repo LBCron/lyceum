@@ -3,8 +3,8 @@ id: 8d441f-release-publish-npm-packages-by-path
 type: chore
 title: 'release: publish npm packages by ./ path'
 branch: chore/8d441f-release-publish-npm-packages-by-path
-status: in-progress
-gate: build
+status: implemented
+gate: close
 files: [.github/workflows/release.yml]
 approvals:
   - gate: plan
