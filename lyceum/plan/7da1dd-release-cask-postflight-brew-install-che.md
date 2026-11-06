@@ -48,4 +48,12 @@ The release also pushes the cask to the tap before anything has installed it, so
 
 ## Progress
 
+- [x] 1. `hooks.post.install` (renders `postflight do`), `skip_upload: true`; cask lands in
+  `dist/homebrew/Casks/lyceum.rb`. Tap token is only read on upload, so goreleaser no longer gets it.
+- [x] 2. `release` uploads that file as artifact `cask`.
+- [x] 3. darwin verify: brew install from local tap, no quarantine, `--version`, uninstall.
+- [x] 4. `tap` job (`permissions: {}`, PAT in step env) commits `Casks/lyceum.rb`; `major-tag` needs `[verify, tap]`.
+- [ ] 5. `goreleaser check` exits 2 (deprecated `hooks.post.install`, config valid); snapshot renders `postflight do`,
+  no `postflight_steps`; actionlint clean. Mac-mini hand run: owner.
+
 ## Log
