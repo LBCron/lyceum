@@ -87,6 +87,37 @@ jobs:
           got="$(./lyceum --version)"
           echo "$got"
           test "$got" = "lyceum $version"
+      - uses: actions/download-artifact@v7
+        if: matrix.os == 'darwin'
+        with:
+          name: cask
+          path: cask
+      - name: brew install the cask from a local tap
+        if: matrix.os == 'darwin'
+        env:
+          CASK: cask/lyceum.rb
+        run: |
+          # Self-contained for a hand run: GITHUB_REF_NAME=v<version> CASK=<path to lyceum.rb>.
+          set -eu
+          export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+          version="${GITHUB_REF_NAME#v}"
+          cask="${CASK:?set CASK to the cask file}"
+          brew tap-new --no-git lyceumverify/local
+          tap="$(brew --repository lyceumverify/local)"
+          mkdir -p "$tap/Casks"
+          cp "$cask" "$tap/Casks/lyceum.rb"
+          brew install --cask lyceumverify/local/lyceum
+          bin="$(readlink -f "$(command -v lyceum)")"
+          echo "$bin"
+          if xattr -p com.apple.quarantine "$bin"; then
+            echo "$bin is still quarantined" >&2
+            exit 1
+          fi
+          got="$(lyceum --version)"
+          echo "$got"
+          test "$got" = "lyceum $version"
+          brew uninstall --cask lyceum
+          brew untap lyceumverify/local
 
   major-tag:
     needs: verify
