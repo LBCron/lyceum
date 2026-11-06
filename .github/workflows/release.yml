@@ -48,7 +48,7 @@ jobs:
             *) tag=latest ;;
           esac
           for pkg in cli-linux-x64 cli-linux-arm64 cli-darwin-x64 cli-darwin-arm64 lyceum; do
-            npm publish "npm-out/$pkg" --access public --tag "$tag"
+            npm publish "./npm-out/$pkg" --access public --tag "$tag"
           done
 
   verify:
