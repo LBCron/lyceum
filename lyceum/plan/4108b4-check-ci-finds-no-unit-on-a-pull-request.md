@@ -4,10 +4,19 @@ type: bug
 title: check --ci finds no unit on a pull request's merge checkout
 branch: fix/4108b4-check-ci-finds-no-unit-on-a-pull-request
 status: implemented
-gate: cause
+gate: close
 files: [internal/cli/check.go]
 acs: [AC184]
-approvals: []
+approvals:
+  - gate: cause
+    hashes:
+      internal/cli/check.go: sha256:bf6d65ed36a6e368365f5d360b6c5b740ab7fb12193c843cff62f38b7d0aff17
+      lyceum/SPEC.md: sha256:43eeca5ad1003301c26a2eb23b1cfbda109fd0dd4f525556dd7bd8127abaac7b
+      lyceum/plan/4108b4-check-ci-finds-no-unit-on-a-pull-request.md: sha256:0fa9e576312f2a467686b7ecc4a32b82c16f9dc87823859ec2992058950e44a3
+      lyceum/spec/enforcement.md: sha256:aab8fdffd85931d45c69593b9941f540082040832252a4a771ed07829211975b
+    commit: 2ba7a2b
+    by: oritromax@gmail.com
+    at: 2026-11-06T15:27:31Z
 ---
 
 ## What and why
