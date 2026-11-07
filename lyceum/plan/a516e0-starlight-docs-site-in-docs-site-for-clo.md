@@ -47,4 +47,11 @@ Docs versioning, `llms.txt`, generated CLI reference, OG images, a CI build job,
 
 ## Progress
 
+1. Done: scaffold, `astro` 7.4.7 and `@astrojs/starlight` 0.42.10 pinned exactly.
+2. Done: 12 pages (landing plus Start, Concepts, Guides, Reference), gate-flow diagram as inline SVG.
+3. Done: `public/_headers`.
+4. Done: `docs-site/README.md`.
+5. Done: `npm ci` and `npm run build` exit 0, 13 pages built; sidebar groups and internal links checked on every page.
+   `lyceum test` pending.
+
 ## Log
