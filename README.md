@@ -1,60 +1,45 @@
 # Lyceum
 
-Lyceum is a spec-driven development lifecycle for coding agents. It is one CLI (`lyceum`) plus a set of skills
-that work in any agent harness that reads the Agent Skills standard.
+Lyceum is an open-source tool for spec-driven development with a coding agent. You stay in control through
+approvals, and it stays out of your way when you need speed: you only see the gates that need a human.
 
-## What Lyceum is
+1. You describe what you want. The agent works out where it fits in your spec, or whether it's new.
+2. It asks about the things that matter: numbered questions, lettered options, its recommendation first, or
+   your own answer.
+3. It proposes the spec change and plan. You approve it or send it back.
+4. It builds, then works through gates. A judgment gate waits for your approval. A mechanical gate clears only
+   on a test run the CLI executed and recorded itself.
+5. Each acceptance criterion maps to a test, each approval is hashed against what you approved, and
+   `lyceum check` enforces both in the commit hook and in CI.
 
-### The problem
+The agent can say it's done. Only the CLI can record that it is.
 
-A coding agent fills every gap in a request with its most plausible guess. It then reports success fluently,
-whether or not the work happened. A plausible guess you never saw and a "tests pass" nobody ran look exactly like
-real decisions and real results.
+## Works with
 
-### What Lyceum does about it
-
-Lyceum puts a contract in front of the agent and an evidence check behind it.
-
-- **The contract.** Before code exists, the agent interviews you and drafts a spec and a plan. You approve them at
-  gates the agent cannot pass. An approval is bound to the sha256 of every file it covers, so an edit after
-  approval shows up.
-- **The evidence.** A mechanical gate, such as `verify`, clears only on a test run the CLI performed and recorded
-  itself. The agent's report of a result never clears a gate.
-- **The check.** `lyceum check` recomputes approval hashes and gate rules. It runs from the pre-commit hook and in
-  CI, so work that skipped a gate is caught before it merges.
-
-### Philosophy
-
-- **No gate passes silently.** Every gate clears by a human approval bound to what was approved, or by a
-  CLI-recorded run. Any bypass shows up in `lyceum check`, and CI blocks the merge.
-- **Done means verifiable.** "Done" is a recorded run, not a description.
-- **All state lives in plain files in the repo.** Plans, specs, approvals and the event log are markdown, YAML and
-  JSONL that diff and merge in git. Nothing lives in chat, so any supported harness works, and you can switch
-  harness mid-unit without losing anything.
-- **Small context.** The agent always loads `AGENTS.md`, `RULES.md` and `TESTING.md`, and loads a plan and its
-  spec areas only when working on it.
-- **Greenfield and brownfield.** A new project starts with an interview. An existing one grows its spec only where
-  work happens.
-- **Structure must not slow you down.** You see only the gates that need a human. Explanation, bookkeeping,
-  drafting and routing are the agent's job, not extra commands for you.
-
-### Who it is for
-
-| Role | Who | What they do |
+| Agent | Tested version | Status |
 |---|---|---|
-| Owner | A solo developer, or the lead of a small team | Approves gates. The only identity whose approvals count |
-| Teammate | Anyone else with repo access | Runs any command. Their approvals are recorded but do not clear gates |
-| Agent | The coding agent in a supported harness | Runs every command except `approve`. Interviews, drafts, builds |
+| Claude Code | 2.1.318 | ✅ |
+| Codex | 0.164.0 | ✅ |
+| OpenCode | 2.0.18 | ✅ |
+| Pi | 0.86.0 | ✅ |
+| Command Code | 1.88.3 | ✅ |
+
+Each was tested end to end in the v1 release check. `lyceum init` finds the agents you use and installs
+the skills, slash commands and a hook for each.
+
+> [!NOTE]
+> Any other agent that reads `AGENTS.md` and `.agents/skills/` can follow the workflow, but without a hook
+> nothing stops it before a gate is approved; the check still catches it at commit and in CI.
 
 ## Install
 
-With npm, run it once without installing:
+Run it once without installing:
 
 ```sh
 npx lyceum init
 ```
 
-or install it globally:
+Or install it globally with npm:
 
 ```sh
 npm i -g lyceum
@@ -72,141 +57,177 @@ With Go:
 go install github.com/oritromax/lyceum/cmd/lyceum@latest
 ```
 
-Platforms: linux-x64, linux-arm64, darwin-x64, darwin-arm64. Windows is not supported. Binaries are also attached
-to each GitHub release. The macOS binaries are not notarized, so after a browser download, run this once:
+Supported platforms are linux-x64, linux-arm64, darwin-x64 and darwin-arm64.
 
-```sh
-xattr -d com.apple.quarantine lyceum
-```
+> [!WARNING]
+> Windows isn't supported.
 
-## How to use it
+Each GitHub release also has the binaries attached. If you download one on macOS through a browser, run
+`xattr -d com.apple.quarantine lyceum` once before using it.
 
-This is a summary. The full specification starts at [`lyceum/SPEC.md`](lyceum/SPEC.md); the detail lives in:
+## Start
 
-| File | Covers |
-|---|---|
-| [`commands.md`](lyceum/spec/commands.md) | Every command and its syntax, `status`, `log`, `doctor` |
-| [`units.md`](lyceum/spec/units.md) | Unit types, the plan file, gate lists, `close`, `amend` |
-| [`records.md`](lyceum/spec/records.md) | `understand`, `trace`, `audit`, citations, freshness, `export` |
-| [`enforcement.md`](lyceum/spec/enforcement.md) | `approve`, `check`, CI, harness hooks, signed approvals |
-| [`test-runner.md`](lyceum/spec/test-runner.md) | `lyceum test`, the TESTING.md format, run records |
-| [`distribution.md`](lyceum/spec/distribution.md) | `init`, harness support, packaging, `eject` |
-
-Run bare `lyceum` to see the commands, and `lyceum <command> --help` for each one. Every command ends with a
-`Next:` line naming the next action.
-
-### Start a project
+Run `init` at the root of your repo, new or existing:
 
 ```sh
 lyceum init
 ```
 
-`init` writes `AGENTS.md`, `RULES.md`, `lyceum/` (spec index, config, event log) and `.gitignore` entries. It wires
-the harnesses it detects, or the ones you name with `--harness` (`claude`, `codex`, `commandcode`, `opencode`,
-`pi`), and offers the pre-commit hook and the CI workflow. It never overwrites an existing `AGENTS.md` or
-`CLAUDE.md`; it appends a marked Lyceum section after asking. Commit what it wrote, then:
+If the folder isn't a git repo yet, `init` offers to run `git init` first.
 
-- **Greenfield** (no code yet): your agent's `lyceum-init` skill runs the project interview and drafts the first
-  spec areas. You approve them with `lyceum approve project`.
-- **Brownfield** (existing code): `init` offers an `understand` run as a baseline. The spec then grows one area at
-  a time, as work touches it.
+### What `init` does
 
-`TESTING.md` says how the project is tested. The first `lyceum test` has the agent draft it from the frameworks it
-detects, and you approve it with `lyceum approve testing`. Mechanical gates rely on that approval.
+1. **Detects** whether the repo already has code, and which agents you use. An agent counts as detected when
+   its binary is on your `PATH` or its project folder exists (`.claude/`, `.codex/`, `.opencode/`, `.pi/`,
+   `.commandcode/`).
+2. **Writes** the Lyceum files:
 
-### Understand existing code
+   | File | What it holds |
+   |---|---|
+   | `AGENTS.md` | The rules your agent reads first. |
+   | `RULES.md` | Project rules. |
+   | `lyceum/SPEC.md` | The spec index: one row per area. |
+   | `lyceum/config.yaml` | Owner, base branch, approval settings. |
+   | `lyceum/events.jsonl` | The event log for approvals and runs. Empty at first. |
+   | `.gitattributes`, `.gitignore` | Merge rules for the event log, and Lyceum's local state. |
 
-| Command | What it does |
-|---|---|
-| `lyceum understand [hint]` | Explain the project or part of it |
-| `lyceum trace [question]` | Follow one flow end to end, by reading the code or with a full run against a TESTING.md environment |
-| `lyceum audit` | Run each ecosystem's audit tool and report vulnerable or outdated dependencies |
-| `lyceum export <record> [path]` | Publish a record to `docs/` |
+   An existing `AGENTS.md` or `CLAUDE.md` is never overwritten. `init` shows you its section, asks once, and
+   appends it between `<!-- lyceum:start -->` and `<!-- lyceum:end -->` markers.
+3. **Wires each agent you pick:** skills, slash commands and a hook that blocks code edits until the right
+   gate is approved. Use `--harness <name>` to wire one without being asked.
+4. **Offers** a pre-commit hook and a CI workflow. Both default to yes.
 
-Inspect commands never edit code and are not units: no branch, plan or gates. The agent saves each answer as a
-record under `lyceum/understand/`, `lyceum/trace/` or `lyceum/audit/`. A record cites the files it describes by
-git hash, so `status` can tell you when one has drifted from the code. Findings are routed, not fixed: a
-contradiction becomes an offer to start a bug or a feature.
+> [!IMPORTANT]
+> Codex and Pi run project hooks only after you trust the project in that agent. Until you do, the hook
+> silently doesn't run. `init` prints the step for each.
 
-### Change code: units
+`TESTING.md` isn't written by `init`. The first `lyceum test` drafts it from the test frameworks it
+detects, and you approve it with `lyceum approve testing`.
 
-A unit is one piece of change work. It is one plan file (`lyceum/plan/<id>.md`) on one branch. Each type has a
-fixed gate list. `J` gates need your approval; `M` gates clear on a run the CLI recorded.
+Re-running `init` updates the skills and hooks to your installed version. It never touches your `lyceum/`
+content.
 
-| Start with | Gates in order | You approve |
+### New project or existing code
+
+| | New project (no code) | Existing code |
 |---|---|---|
-| `lyceum add feat "<title>"` | `spec` J → `build` → `verify` M → `close` | `spec` (spec delta, ACs and plan, in one stop) |
-| `lyceum add bug "<title>"` | `repro` M → `diagnose` → `fix` → `verify` M → `cause` J → `close` | `cause` (root cause and fix diff) |
-| `lyceum refactor "<title>"` | `intent` J → `baseline` M → `plan` J → `build` → `verify` M → `close` | `intent`, `plan`, and any characterization tests or test-file changes |
-| `lyceum chore "<title>"` | trivial: `build` → `close`; planned: `plan` J → `build` → `verify` M → `close` | nothing for a trivial chore; `plan` for a planned one |
-| `lyceum add doc "<title>"` | `draft` → `verify` M → `close` | nothing |
-| `lyceum add test "<title>"` | `write` → `run` M → `close` | nothing |
+| Next step | The agent interviews you about the project | The agent offers `lyceum understand` to explain the code you have |
+| The interview | It opens with one open question (what are you building, and for whom?), then numbered questions with options, at most two rounds | None |
+| What it writes | Spec areas under `lyceum/spec/`, each with acceptance criteria | A baseline record under `lyceum/understand/`, if you accept |
+| Your approval | `lyceum approve project`, covering the whole initial spec | No project-wide approval |
+| How the spec grows | Units add acceptance criteria to existing areas, or register a new area with `lyceum plan --new-area` | One area at a time, as units touch them. Each new area starts with an as-built section written from the code, which you approve with the unit's plan. Untouched areas stay unspecified. |
+| First unit | `lyceum add feat "<title>"` | Whatever you want to do next: a feature, a bug fix, a refactor |
 
-A bug starts test-first: `repro` needs a new test that fails before any fix exists. A trivial chore may not touch
-code, a manifest, a lockfile or CI config; `lyceum plan` upgrades it to a planned chore. A test unit whose new test
-fails is converted to a bug at `close`, with that test as the repro. The exact gate rules are in
-[`units.md`](lyceum/spec/units.md).
+## How to use it
 
-### The day-to-day loop
+Lyceum's documentation is its own spec. Start with the index, then go to the file you need:
 
-```sh
-lyceum status
-```
-
-`status` lists every open unit on this branch and others, its gate, the pending approvals, and the next action.
-Your agent runs it at the start of each session too. Then:
-
-1. **Start a unit**, for example `lyceum add feat "CSV export"`. Lyceum creates the plan file and the branch.
-2. **Work with your agent.** It interviews you, drafts the spec delta and plan, and stops at the gate.
-3. **Approve** in a real terminal the agent doesn't control: `lyceum approve`. Bare `approve` walks every pending
-   gate. It shows what you are approving with its hashes and diff, and asks you to type the gate name.
-4. **The agent builds.** Until the gate that opens code clears, the harness hook blocks the agent's code writes.
-5. **Test** with `lyceum test`. It runs the suite from TESTING.md and records the run. A passing full run clears
-   `verify`.
-6. **Close** with `lyceum close`. It checks the last gate cleared, closes the unit, and opens a PR with `gh` or
-   `glab` if one is set up; otherwise it prints the push and merge commands. You merge.
-
-If the plan needs to change mid-build, `lyceum amend "<reason>"` reopens it: the approval goes back to pending and
-`check` fails new code until you approve again. `lyceum plan` shows the current plan. `lyceum log` shows the
-project history, and `lyceum doctor` checks the setup.
-
-### Who does what
-
-You decide the unknowns and approve. The agent does the rest: it interviews, drafts the spec and plan, writes the
-code and tests, runs `lyceum test`, and keeps the plan's progress current. It does this through the skills `init`
-installs in `.agents/skills/lyceum-*/`:
-
-| Skill | Flow |
+| Topic | File |
 |---|---|
-| `lyceum-status` | Orientation: run `status`, follow the next step |
-| `lyceum-init` | The greenfield project interview |
-| `lyceum-feat`, `lyceum-bug`, `lyceum-refactor`, `lyceum-chore`, `lyceum-doc`, `lyceum-test` | One per unit type |
-| `lyceum-understand`, `lyceum-trace`, `lyceum-audit` | The inspect commands |
+| Index of every area | [`lyceum/SPEC.md`](lyceum/SPEC.md) |
+| Goals, scope, who it's for | [`overview.md`](lyceum/spec/overview.md) |
+| Every command and its `Next:` line | [`commands.md`](lyceum/spec/commands.md) |
+| Unit types and their gates | [`units.md`](lyceum/spec/units.md) |
+| `understand`, `trace`, `audit` records | [`records.md`](lyceum/spec/records.md) |
+| Approvals, hooks, `check` | [`enforcement.md`](lyceum/spec/enforcement.md) |
+| `TESTING.md` and recorded runs | [`test-runner.md`](lyceum/spec/test-runner.md) |
+| Install, `init`, agent wiring | [`distribution.md`](lyceum/spec/distribution.md) |
+| Files, config, event log | [`architecture.md`](lyceum/spec/architecture.md) |
 
-The agent cannot approve. `approve` refuses inside a known harness and without a terminal on stdin and stdout, and
-the harness hook blocks any shell command that runs it. One opt-in exception: with `approvals.harness_prompt: allow`
-in `lyceum/config.yaml`, Claude Code, OpenCode and Pi can run it when you ask, and the harness asks you to confirm
-in its own prompt. The approval event records that route.
+Each piece of work is a **unit**: one plan file under `lyceum/plan/` and one branch. You can drive a unit
+from inside your agent or from your terminal:
 
-Tested end to end with **Claude Code, Codex, OpenCode, Pi and Command Code**. `init` installs the skills, slash
-commands where the harness has them, the instructions pointer and a pre-tool hook for each. Codex and Pi load
-project hooks only after you trust the project. Any other harness that reads the Agent Skills standard gets the
-skills, with no guarantee.
+- **Inside the agent**, you start a skill and describe what you want. The agent runs the `lyceum` commands
+  and asks you questions. When a gate needs your approval, it stops and tells you the exact
+  `lyceum approve` command to run.
+- **In your terminal**, you run each `lyceum` command yourself. The agent still does the writing between
+  steps.
 
-## How it works with CI
+`lyceum approve` only runs in your own terminal. Inside an agent's shell it refuses, so the agent can
+tell you which approval is due and the exact command to type, but it can't approve anything on its own.
 
-Two layers run `lyceum check`:
+The examples use Claude Code's skill syntax. In other agents:
 
-- **The pre-commit hook** runs it on every commit as a warning. It prints the findings and never blocks the commit;
-  a commit past a failing finding is recorded as a `bypass` event in the log.
-- **CI** runs `lyceum check --ci`, which fails on any failing finding. It runs in any CI.
+| Agent | Start a skill |
+|---|---|
+| Claude Code | `/lyceum-feat` |
+| Codex | `$lyceum-feat` |
+| Pi | `/skill:lyceum-feat` |
+| OpenCode, Command Code | Ask for the skill by name |
 
-Local checks catch a sloppy or over-eager agent. CI plus branch protection catches the rest.
+### Add a feature
 
-### The workflow `init` writes
+Gates: `spec` (you approve) → `build` → `verify` (recorded run) → `close`.
 
-When you accept the CI workflow, `init` writes `.github/workflows/lyceum.yml`, which runs the check on every pull
-request:
+| Step | Inside the agent | In your terminal |
+|---|---|---|
+| Start | You: `/lyceum-feat Export orders as CSV` | `lyceum add feat "Export orders as CSV"` |
+| Interview, spec, plan | The agent asks its questions, then writes the spec change, acceptance criteria and plan | The same: your agent does the writing |
+| Approve the spec | The agent stops and asks you to run `lyceum approve spec` in your terminal | `lyceum approve spec` |
+| Build | The agent writes the code and tests | The same |
+| Verify | The agent runs `lyceum test` | `lyceum test` |
+| Close | The agent runs `lyceum close` | `lyceum close` |
+
+`close` folds the spec change into the area files and opens a PR, or prints the push and merge commands.
+
+### Fix a bug
+
+Gates: `repro` (a recorded failing test) → `diagnose` → `fix` → `verify` (recorded run) → `cause`
+(you approve) → `close`. The test comes first, and you approve after the fix, not before.
+
+| Step | Inside the agent | In your terminal |
+|---|---|---|
+| Start | You: `/lyceum-bug Order totals ignore the discount on the last item` | `lyceum add bug "Order totals ignore the discount on the last item"` |
+| Reproduce | The agent writes a test that fails because of the bug, commits it, and runs `lyceum test --repro <test>` | `lyceum test --repro TestOrderTotalDiscount` (clears only if the test fails) |
+| Diagnose, fix | The agent writes the root cause in the plan, then fixes the bug | The same: your agent does the writing |
+| Verify | The agent runs `lyceum test` | `lyceum test` |
+| Approve the cause | The agent stops and asks you to run `lyceum approve cause`; the approval covers the root cause and the fix diff together | `lyceum approve cause` |
+| Close | The agent runs `lyceum close` | `lyceum close` |
+
+If no automated test can reproduce the bug, the agent explains why and stops. Only you can skip `repro`:
+`lyceum approve cause --no-repro "<reason>"`. `verify` and `cause` are still required.
+
+### Add a test
+
+Gates: `write` → `run` (recorded run) → `close`. Nothing needs your approval.
+
+| Step | Inside the agent | In your terminal |
+|---|---|---|
+| Start | You: `/lyceum-test Export rejects a date range longer than a year` | `lyceum add test "Export rejects a date range longer than a year"` |
+| Write | The agent writes the one test and commits it | The same |
+| Run | The agent runs `lyceum test` | `lyceum test` |
+| Close | The agent runs `lyceum close` | `lyceum close` |
+
+If the new test fails on the current code, the unit stops and the agent offers to turn it into a bug.
+`lyceum close` then starts a bug at `diagnose`, with the test as its repro.
+
+### Other unit types
+
+| Type | Inside the agent | In your terminal | What it does |
+|---|---|---|---|
+| Refactor | `/lyceum-refactor <title>` | `lyceum refactor "<title>"` | Changes structure, not behaviour. You approve the intent and the plan, the suite must pass before and after, and any change to a test file needs your approval. |
+| Chore | `/lyceum-chore <title>` | `lyceum chore "<title>"` | Maintenance work. A trivial chore has no gates, but `check` fails one that touches code, a manifest, a lockfile or CI config. `lyceum plan` upgrades it to a planned chore that you approve. |
+| Doc | `/lyceum-doc <title>` | `lyceum add doc "<title>"` | Documentation only. No approval; the branch may change only non-code files. |
+
+> [!NOTE]
+> In Claude Code, OpenCode and Pi you can tell the agent to run `lyceum approve` for you. The agent then
+> asks you to confirm in its own approval prompt before the approval goes through. This is on by default.
+> Set `approvals.harness_prompt: deny` in `lyceum/config.yaml` to turn it off.
+
+## Working with CI
+
+| Layer | What it does |
+|---|---|
+| Pre-commit hook | Runs `lyceum check`, prints findings, and never blocks a commit. A commit past a failing finding is recorded as a `bypass` event, with a few exceptions such as approval drift and warning-only findings. |
+| CI | Runs `lyceum check --ci` and fails the job on any failing finding. Warning-only findings, such as stale records, don't fail it. |
+| Branch protection | Require the CI check so a failing PR can't merge. Without it, CI only reports. |
+
+`check` covers approval hashes, gate rules, plan fields against the event log, the spec registry, and stale
+test evidence. A passing suite doesn't stand in for a missing approval.
+
+### GitHub Actions
+
+If you accept CI during `init`, it writes `.github/workflows/lyceum.yml`, a pull-request job whose steps are:
 
 ```yaml
 - uses: actions/checkout@v4
@@ -215,38 +236,26 @@ request:
 - uses: oritromax/lyceum/check-action@v1
 ```
 
-The Action downloads the release archive for the runner (Linux or macOS, X64 or ARM64) and `checksums.txt` from
-this repo's GitHub release, refuses an archive whose sha256 does not match, and runs `lyceum check --ci` in the
-workspace. The job fails exactly when the check does. Other runners fail with a message naming the platform.
-
-On a pull request GitHub checks out a merge commit with a detached HEAD. `check --ci` takes the pull request's
-branch from `GITHUB_HEAD_REF` and checks that branch's unit, so a closed unit there passes.
-
-Require the check in branch protection. Without that, CI only reports.
-
-### Which release runs
-
-- `@v1` runs the release the `v1` tag points at. The release workflow moves `v1` only to the newest stable
-  `v1.x.y` after its archives are verified, so `@v1` is the latest stable v1.
-- `@v1.2.3` runs exactly that release.
-- Any other ref (a branch, a commit) runs the release of the highest major tag.
-- The `version` input (`latest`, `v1` or `v1.2.3`) overrides the ref.
+`@v1` runs the latest stable v1 release. For pinning a release, other CI systems, and how the Action
+picks a release, see [`docs/ci.md`](docs/ci.md).
 
 ## What it isn't
 
-- **Not an agent or a harness.** Lyceum is a CLI and a set of skills. Your harness runs the agent.
-- **Not a code generator.** The CLI never writes or reads your code for meaning. The agent does that.
-- **Not a large-organisation workflow.** There are no roles, per-gate approvers or per-unit custom gate lists. One
-  owner approves.
-- **Not a replacement for code review.** Gates check that the spec, plan and evidence exist and were approved. They
-  don't judge whether the code is good.
-- **Not a security boundary on your machine.** Nothing that runs locally as the same OS user is absolute. CI with
-  branch protection is the wall; signed approvals (opt-in) make an approval effectively unforgeable.
-- **No telemetry.** The CLI sends no network traffic except through `git`, `gh`/`glab`, and the commands your
-  TESTING.md defines.
-- **Not on Windows.** Linux and macOS only.
-- **Not notarized on macOS.** See the `xattr` note under Install.
+- **Not an agent or harness.** Your harness runs the agent. Lyceum provides the CLI, the skills, and the
+  lifecycle checks.
+- **Not a code generator or code analyser.** The agent reads and writes code. The CLI manages state, runs
+  commands, and checks evidence.
+- **Not a replacement for code review.** Gates prove the required approvals and evidence exist. They don't
+  prove the code is correct or well designed.
+- **Not a large-organisation approval system.** One configured owner clears judgment gates. There are no
+  per-gate approvers and no custom gate lists per unit.
+- **Not a security boundary on your machine.** Hooks and terminal checks stop ordinary agent behaviour, but
+  any process running as your user can get around local controls. CI with branch protection is the
+  enforcement; signed approval commits are an opt-in extra.
+- **No telemetry.** The CLI opens no network connections except through `git`, `gh`/`glab`, and the
+  commands your `TESTING.md` defines.
+- **Not on Windows.** v1 supports Linux and macOS. macOS binaries aren't notarized.
 
 ## License
 
-MIT
+MIT. See [`LICENSE`](LICENSE).
