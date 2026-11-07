@@ -44,3 +44,4 @@
 {"ts":"2026-11-07T04:59:42Z","type":"add","unit":"58e897-readme-what-lyceum-is-install-use-ci-wha","actor":"oritromax@gmail.com","commit":"e1ff9be","branch":"chore/58e897-readme-what-lyceum-is-install-use-ci-wha","gate":"build","status":"in-progress","unit_type":"chore"}
 {"ts":"2026-11-07T07:32:32Z","type":"close","unit":"58e897-readme-what-lyceum-is-install-use-ci-wha","actor":"oritromax@gmail.com","commit":"85c1b97","status":"closed"}
 {"ts":"2026-11-07T12:51:45Z","type":"add","unit":"a516e0-starlight-docs-site-in-docs-site-for-clo","actor":"oritromax@gmail.com","commit":"ec7d678","branch":"chore/a516e0-starlight-docs-site-in-docs-site-for-clo","gate":"build","status":"in-progress","unit_type":"chore"}
+{"ts":"2026-11-07T12:52:20Z","type":"gate-reopen","unit":"a516e0-starlight-docs-site-in-docs-site-for-clo","actor":"oritromax@gmail.com","commit":"1ae556a","gate":"plan","reason":"chore upgraded to planned","status":"planned"}
