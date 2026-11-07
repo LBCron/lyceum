@@ -13,6 +13,24 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/oritromax/lyceum/edit/main/docs-site/',
       },
+      sidebar: [
+        {
+          label: 'Start',
+          items: ['start/what-is-lyceum', 'start/install', 'start/quickstart'],
+        },
+        {
+          label: 'Concepts',
+          items: ['concepts/units-and-gates', 'concepts/approvals', 'concepts/acceptance-criteria'],
+        },
+        {
+          label: 'Guides',
+          items: ['guides/agents', 'guides/ci', 'guides/existing-projects'],
+        },
+        {
+          label: 'Reference',
+          items: ['reference/commands', 'reference/config'],
+        },
+      ],
     }),
   ],
 });

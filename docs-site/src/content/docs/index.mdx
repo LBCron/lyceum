@@ -1,0 +1,120 @@
+---
+title: Lyceum
+description: Spec-driven development with a coding agent. You approve at gates; the CLI records the proof.
+template: splash
+hero:
+  tagline: Spec-driven development with a coding agent. You stay in control through approvals, and it stays out of your way when you need speed.
+  actions:
+    - text: Get started
+      link: /start/quickstart/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/oritromax/lyceum
+      icon: external
+      variant: minimal
+---
+
+import { Steps, Tabs, TabItem, Aside } from '@astrojs/starlight/components';
+
+## How it works
+
+<Steps>
+
+1. You describe what you want. The agent works out where it fits in your spec, or whether it's new.
+
+2. It asks about the things that matter: numbered questions, lettered options, its recommendation first, or your own answer.
+
+3. It proposes the spec change and plan. You approve it or send it back.
+
+4. It builds, then works through gates. A judgment gate waits for your approval. A mechanical gate clears only on a test run the CLI executed and recorded itself.
+
+5. Each acceptance criterion maps to a test, each approval is hashed against what you approved, and `lyceum check` enforces both in the commit hook and in CI.
+
+</Steps>
+
+The agent can say it's done. Only the CLI can record that it is.
+
+## Gates for a feature
+
+<figure>
+<svg viewBox="0 0 760 170" role="img" aria-labelledby="gate-flow-title gate-flow-desc" style="width:100%;height:auto;max-width:760px">
+  <title id="gate-flow-title">Feature gate flow</title>
+  <desc id="gate-flow-desc">spec, a judgment gate you approve, then build, then verify, a mechanical gate cleared by a recorded test run, then close.</desc>
+  <defs>
+    <marker id="gate-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="currentColor" />
+    </marker>
+  </defs>
+  <g fill="none" stroke="currentColor" stroke-width="2">
+    <rect x="10" y="20" width="150" height="70" rx="10" stroke="var(--sl-color-accent)" stroke-width="3" />
+    <rect x="210" y="20" width="150" height="70" rx="10" stroke-dasharray="6 4" />
+    <rect x="410" y="20" width="150" height="70" rx="10" />
+    <rect x="610" y="20" width="140" height="70" rx="10" stroke-dasharray="6 4" />
+    <line x1="160" y1="55" x2="206" y2="55" marker-end="url(#gate-arrow)" />
+    <line x1="360" y1="55" x2="406" y2="55" marker-end="url(#gate-arrow)" />
+    <line x1="560" y1="55" x2="606" y2="55" marker-end="url(#gate-arrow)" />
+  </g>
+  <g fill="currentColor" font-family="inherit" text-anchor="middle">
+    <text x="85" y="50" font-size="20" font-weight="700">spec</text>
+    <text x="85" y="74" font-size="13">judgment: you approve</text>
+    <text x="285" y="50" font-size="20" font-weight="700">build</text>
+    <text x="285" y="74" font-size="13">agent writes code, tests</text>
+    <text x="485" y="50" font-size="20" font-weight="700">verify</text>
+    <text x="485" y="74" font-size="13">mechanical: recorded run</text>
+    <text x="680" y="50" font-size="20" font-weight="700">close</text>
+    <text x="680" y="74" font-size="13">CLI closes the unit</text>
+  </g>
+  <g fill="currentColor" font-size="13" font-family="inherit">
+    <rect x="10" y="125" width="28" height="18" rx="4" fill="none" stroke="var(--sl-color-accent)" stroke-width="3" />
+    <text x="46" y="139">Judgment gate: clears by owner approval</text>
+    <rect x="380" y="125" width="28" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="2" />
+    <text x="416" y="139">Mechanical gate: clears on a CLI-recorded run</text>
+  </g>
+</svg>
+<figcaption>A feature's gates. Other unit types have their own fixed lists; see <a href="/concepts/units-and-gates/">Units and gates</a>.</figcaption>
+</figure>
+
+## Works with
+
+| Agent | Tested version | Status |
+|---|---|---|
+| Claude Code | 2.1.318 | ✅ |
+| Codex | 0.164.0 | ✅ |
+| OpenCode | 2.0.18 | ✅ |
+| Pi | 0.86.0 | ✅ |
+| Command Code | 1.88.3 | ✅ |
+
+Each was tested end to end in the v1 release check. `lyceum init` finds the agents you use and installs the skills, slash commands and a hook for each.
+
+<Aside>
+Any other agent that reads `AGENTS.md` and `.agents/skills/` can follow the workflow, but without a hook nothing stops it before a gate is approved; the check still catches it at commit and in CI.
+</Aside>
+
+## Install
+
+<Tabs>
+  <TabItem label="npx">
+    Run it once without installing:
+
+    ```sh
+    npx lyceum init
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```sh
+    npm i -g lyceum
+    ```
+  </TabItem>
+  <TabItem label="Homebrew">
+    ```sh
+    brew install oritromax/tap/lyceum
+    ```
+  </TabItem>
+  <TabItem label="Go">
+    ```sh
+    go install github.com/oritromax/lyceum/cmd/lyceum@latest
+    ```
+  </TabItem>
+</Tabs>
+
+Supported platforms are linux-x64, linux-arm64, darwin-x64 and darwin-arm64. Windows isn't supported. See [Install](/start/install/) for release downloads.
