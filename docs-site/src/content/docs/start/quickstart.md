@@ -25,7 +25,7 @@ If the folder isn't a git repo yet, `init` offers to run `git init` first.
    | `lyceum/SPEC.md` | The spec index: one row per area. |
    | `lyceum/config.yaml` | Owner, base branch, approval settings. |
    | `lyceum/events.jsonl` | The event log for approvals and runs. Empty at first. |
-   | `.gitattributes`, `.gitignore` | Merge rules for the event log, and Lyceum's local state. |
+   | `.gitattributes`, `.gitignore` | A merge rule for the event log, and ignore entries for `.lyceum/` (local runs and cache) and for files harnesses write on their own. |
 
    An existing `AGENTS.md` or `CLAUDE.md` is never overwritten. `init` shows you its section, asks once, and appends it between `<!-- lyceum:start -->` and `<!-- lyceum:end -->` markers.
 3. **Wires each agent you pick:** skills, slash commands and a hook that blocks code edits until the right gate is approved. Use `--harness <name>` to wire one without being asked.
