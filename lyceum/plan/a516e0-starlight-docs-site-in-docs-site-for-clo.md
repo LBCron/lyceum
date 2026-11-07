@@ -3,10 +3,16 @@ id: a516e0-starlight-docs-site-in-docs-site-for-clo
 type: chore
 title: Starlight docs site in docs-site for Cloudflare Pages
 branch: chore/a516e0-starlight-docs-site-in-docs-site-for-clo
-status: planned
-gate: plan
+status: in-progress
+gate: build
 files: [docs-site/package.json, docs-site/package-lock.json, docs-site/astro.config.mjs, docs-site/tsconfig.json, docs-site/.gitignore, docs-site/README.md, docs-site/public/favicon.svg, docs-site/public/_headers, docs-site/src/content.config.ts, docs-site/src/content/docs/index.mdx, docs-site/src/content/docs/start/what-is-lyceum.md, docs-site/src/content/docs/start/install.md, docs-site/src/content/docs/start/quickstart.md, docs-site/src/content/docs/concepts/units-and-gates.md, docs-site/src/content/docs/concepts/approvals.md, docs-site/src/content/docs/concepts/acceptance-criteria.md, docs-site/src/content/docs/guides/agents.md, docs-site/src/content/docs/guides/ci.md, docs-site/src/content/docs/guides/existing-projects.md, docs-site/src/content/docs/reference/commands.md, docs-site/src/content/docs/reference/config.md]
-approvals: []
+approvals:
+  - gate: plan
+    hashes:
+      lyceum/plan/a516e0-starlight-docs-site-in-docs-site-for-clo.md: sha256:e27e62a5ca7d1f31afc97cd63e77550daf5e650b361eb54b9bb37c5d00ea0831
+    commit: 9fcb1e2
+    by: oritromax@gmail.com
+    at: 2026-11-07T12:52:41Z
 ---
 
 ## What and why
