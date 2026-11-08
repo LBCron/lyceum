@@ -50,4 +50,10 @@ Per-PR preview deploys, a custom domain, generated CLI reference (#17), llms.txt
 
 ## Progress
 
+1. Done: `site` set; build writes `sitemap-index.xml` and `sitemap-0.xml`.
+2. Done: build job, with a sitemap assertion.
+3. Done: deploy job on push to main, wrangler 4.158.0, skips with a notice when a secret is missing. Not exercised locally.
+4. Done: README section with the secrets and token permission.
+5. Done: build exits 0 (13 pages), `actionlint` clean. The deploy is proven only by the first merge.
+
 ## Log
