@@ -10,10 +10,33 @@ approvals: []
 
 ## What and why
 
+Lyceum has no logo (issue #22). The mark is final ("Cut ends": an L with diagonal end cuts and an amber
+pillar). Land it on the docs site header, the favicon and the README. The site's blue accent stays as it is;
+retheming it is a separate decision.
+
 ## Spec delta
+
+None. No behaviour change in the CLI.
 
 ## Steps
 
+1. Add `mark.svg` and `mark-dark.svg` to `docs-site/src/assets/` and wire them as the Starlight `logo`
+   (light/dark). The site title text stays.
+2. Replace `docs-site/public/favicon.svg` with the new tile and add `favicon-32.png` and
+   `apple-touch-icon.png` as fallbacks, linked from `head`.
+3. Add `lockup.svg` and `lockup-dark.svg` to `docs/assets/` and a `<picture>` header at the top of
+   `README.md` that follows `prefers-color-scheme`.
+4. `npm ci && npm run build` in `docs-site/` exits 0; check the header in light and dark. `lyceum test`.
+
+## Out of scope (follow-ups)
+
+Site accent colour, Open Graph images (#19), a landing-page hero logo.
+
 ## Progress
+
+1. Done.
+2. Done.
+3. Done.
+4. Done: build exits 0 (13 pages); header mark checked in light and dark.
 
 ## Log

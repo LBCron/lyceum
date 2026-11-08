@@ -9,6 +9,15 @@ export default defineConfig({
       title: 'Lyceum',
       description: 'Spec-driven development with a coding agent, gated by approvals and recorded test runs.',
       favicon: '/favicon.svg',
+      logo: {
+        light: './src/assets/mark.svg',
+        dark: './src/assets/mark-dark.svg',
+        alt: 'Lyceum',
+      },
+      head: [
+        { tag: 'link', attrs: { rel: 'icon', href: '/favicon-32.png', sizes: '32x32', type: 'image/png' } },
+        { tag: 'link', attrs: { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' } },
+      ],
       social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/oritromax/lyceum' }],
       editLink: {
         baseUrl: 'https://github.com/oritromax/lyceum/edit/main/docs-site/',
