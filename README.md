@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/lockup-dark.svg">
+    <img src="docs/assets/lockup.svg" alt="Lyceum" height="64">
+  </picture>
+</p>
+
 # Lyceum
 
 Lyceum is an open-source tool for spec-driven development with a coding agent. You stay in control through
