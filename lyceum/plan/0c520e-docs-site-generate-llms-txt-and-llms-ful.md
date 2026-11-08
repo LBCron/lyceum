@@ -52,4 +52,10 @@ files (#20), and Open Graph images (#19).
 
 ## Progress
 
+1. Done: `src/lib/llms.mjs` with the sidebar group list and the two build failures (page in no group, group names a missing page).
+2. Done: the three endpoints; the landing body is left out of `llms-full.txt`.
+3. Done: 7 tests in `llms.test.mjs`; `npm test` runs them with the generator tests (14 pass).
+4. Done: workflow asserts `llms.txt`, `llms-full.txt` and a page `.md`; README paragraph; `actionlint` clean.
+5. Done: build exits 0 (14 pages); all 14 links in `llms.txt` resolve to files in `dist/`; `llms-full.txt` (42 KB) contains the CLI reference and no `<svg`.
+
 ## Log

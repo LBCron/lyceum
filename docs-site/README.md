@@ -26,6 +26,13 @@ LYCEUM_BIN=/path/to/lyceum npm run build
 `npm test` runs the generator's parser tests. The generator fails the build when the binary is missing or the
 help output no longer parses.
 
+## For agents
+
+The build also writes `llms.txt` (an index of the pages), `llms-full.txt` (every page in one file) and a raw
+Markdown copy of each page at its URL plus `.md`, for example `/start/install.md`. They are rendered from the docs
+content, so they include the generated CLI reference and cannot drift from the pages. The page groups in
+`src/lib/llms.mjs` mirror the sidebar; the build fails if a page is in none of them, so add a new page to both.
+
 ## Build
 
 ```sh
