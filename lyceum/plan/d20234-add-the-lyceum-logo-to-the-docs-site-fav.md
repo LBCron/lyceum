@@ -3,10 +3,16 @@ id: d20234-add-the-lyceum-logo-to-the-docs-site-fav
 type: chore
 title: Add the Lyceum logo to the docs site, favicon and README
 branch: chore/d20234-add-the-lyceum-logo-to-the-docs-site-fav
-status: planned
-gate: plan
+status: in-progress
+gate: build
 files: [README.md, docs/assets/lockup.svg, docs/assets/lockup-dark.svg, docs-site/astro.config.mjs, docs-site/public/favicon.svg, docs-site/public/favicon-32.png, docs-site/public/apple-touch-icon.png, docs-site/src/assets/mark.svg, docs-site/src/assets/mark-dark.svg]
-approvals: []
+approvals:
+  - gate: plan
+    hashes:
+      lyceum/plan/d20234-add-the-lyceum-logo-to-the-docs-site-fav.md: sha256:53eb44251ed39406b1fad876e75837ad585a69de4dfbf2f582a462c3c87b2f7b
+    commit: 0b91e12
+    by: oritromax@gmail.com
+    at: 2026-11-08T06:01:35Z
 ---
 
 ## What and why
