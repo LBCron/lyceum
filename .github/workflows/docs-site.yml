@@ -4,10 +4,10 @@ name: docs-site
 
 on:
   pull_request:
-    paths: [docs-site/**, .github/workflows/docs-site.yml]
+    paths: [docs-site/**, cmd/**, internal/cli/**, go.mod, go.sum, .github/workflows/docs-site.yml]
   push:
     branches: [main]
-    paths: [docs-site/**, .github/workflows/docs-site.yml]
+    paths: [docs-site/**, cmd/**, internal/cli/**, go.mod, go.sum, .github/workflows/docs-site.yml]
 
 permissions:
   contents: read
@@ -15,20 +15,30 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: docs-site
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
-      - run: npm ci
-      - run: npm run build
-      - name: Sitemap was generated
-        run: test -s dist/sitemap-index.xml
+      - name: Build the CLI the reference is generated from
+        run: CGO_ENABLED=0 go build -o dist/lyceum ./cmd/lyceum
+      - name: Install
+        working-directory: docs-site
+        run: npm ci
+      - name: Generator tests
+        working-directory: docs-site
+        run: npm test
+      - name: Build
+        working-directory: docs-site
+        run: npm run build
+      - name: Sitemap and CLI reference were generated
+        working-directory: docs-site
+        run: test -s dist/sitemap-index.xml && test -s dist/reference/cli/index.html
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'push'
         with:

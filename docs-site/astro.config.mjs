@@ -38,7 +38,7 @@ export default defineConfig({
         },
         {
           label: 'Reference',
-          items: ['reference/commands', 'reference/config'],
+          items: ['reference/commands', 'reference/cli', 'reference/config'],
         },
       ],
     }),

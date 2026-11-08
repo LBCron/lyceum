@@ -4,10 +4,13 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/gen-cli-reference.mjs",
     "dev": "astro dev",
     "start": "astro dev",
+    "prebuild": "node scripts/gen-cli-reference.mjs",
     "build": "astro build",
     "preview": "astro preview",
+    "test": "node --test scripts/*.test.mjs",
     "astro": "astro"
   },
   "dependencies": {
