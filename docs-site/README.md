@@ -13,6 +13,19 @@ npm ci
 npm run dev
 ```
 
+## CLI reference
+
+`reference/cli.md` is generated from the `lyceum` binary's help and is not committed. `npm run dev` and
+`npm run build` regenerate it first. Build the binary from the repo root, or point `LYCEUM_BIN` at one:
+
+```sh
+go build -o dist/lyceum ./cmd/lyceum
+LYCEUM_BIN=/path/to/lyceum npm run build
+```
+
+`npm test` runs the generator's parser tests. The generator fails the build when the binary is missing or the
+help output no longer parses.
+
 ## Build
 
 ```sh

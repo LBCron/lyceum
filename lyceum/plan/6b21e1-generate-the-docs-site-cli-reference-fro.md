@@ -60,4 +60,11 @@ hand-written. A committed copy of the output and a drift check.
 
 ## Progress
 
+1. Done: `gen-cli-reference.mjs`, no dependencies; writes 18 command sections from the binary's help.
+2. Done: 7 parser tests (`npm test`), including the failure cases.
+3. Done: `predev`/`prebuild`/`test` scripts, `cli.md` gitignored, `reference/cli` in the sidebar.
+4. Done: `commands.md` keeps the prose and the Internal table; the flag and menu tables are gone.
+5. Done: workflow builds the binary, runs the generator tests, rebuilds on `cmd/**`, `internal/cli/**`, `go.mod`, `go.sum`; `actionlint` clean; README documents `LYCEUM_BIN`.
+6. Done except the visual check: build exits 0 (14 pages); missing binary, nameless command and unparseable flag each exit 1 with a specific message. Not done: viewing the rendered page in a browser (the browser tool was down); the built HTML was checked instead.
+
 ## Log
