@@ -3,10 +3,16 @@ id: e0b7ea-docs-site-ci-build-on-pull-requests-depl
 type: chore
 title: 'Docs site CI: build on pull requests, deploy on merge, set site for the sitemap'
 branch: chore/e0b7ea-docs-site-ci-build-on-pull-requests-depl
-status: planned
-gate: plan
+status: in-progress
+gate: build
 files: [.github/workflows/docs-site.yml, docs-site/astro.config.mjs, docs-site/README.md]
-approvals: []
+approvals:
+  - gate: plan
+    hashes:
+      lyceum/plan/e0b7ea-docs-site-ci-build-on-pull-requests-depl.md: sha256:6b97d30caf428403ace64939901aa620507e87f355f79ed7c1744f4fba5193cf
+    commit: d6dec6e
+    by: oritromax@gmail.com
+    at: 2026-11-08T06:19:25Z
 ---
 
 ## What and why
