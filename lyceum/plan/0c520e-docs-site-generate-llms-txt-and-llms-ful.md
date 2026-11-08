@@ -3,10 +3,16 @@ id: 0c520e-docs-site-generate-llms-txt-and-llms-ful
 type: chore
 title: 'Docs site: generate llms.txt and llms-full.txt at build time'
 branch: chore/0c520e-docs-site-generate-llms-txt-and-llms-ful
-status: planned
-gate: plan
+status: in-progress
+gate: build
 files: [docs-site/src/lib/llms.mjs, docs-site/src/lib/llms.test.mjs, docs-site/src/pages/llms.txt.ts, docs-site/src/pages/llms-full.txt.ts, "docs-site/src/pages/[...slug].md.ts", docs-site/package.json, docs-site/README.md, .github/workflows/docs-site.yml]
-approvals: []
+approvals:
+  - gate: plan
+    hashes:
+      lyceum/plan/0c520e-docs-site-generate-llms-txt-and-llms-ful.md: sha256:d69e01c0397dbe648f133fe88bd1a9d7c167059a28bb259b06ad402b088d1f88
+    commit: 592c3a6
+    by: oritromax@gmail.com
+    at: 2026-11-08T07:21:03Z
 ---
 
 ## What and why
