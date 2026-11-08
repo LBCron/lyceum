@@ -1,0 +1,13 @@
+# Lyceum
+
+> Official documentation and repository index for Lyceum.
+
+## Key Documentation
+
+- [Lyceum Repository](https://github.com/oritromax/lyceum): Source code, architecture, and releases.
+- [Documentation Directory](https://github.com/oritromax/lyceum/tree/main/docs): Guides and reference documentation.
+
+## AI Agent Discovery
+
+- Structured following the standard /llms.txt specification.
+- Validated via [AccessGuard AI-Readiness Suite](https://ronanchnlps-bit.github.io/).
