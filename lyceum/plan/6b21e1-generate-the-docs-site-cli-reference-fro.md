@@ -3,10 +3,16 @@ id: 6b21e1-generate-the-docs-site-cli-reference-fro
 type: chore
 title: Generate the docs-site CLI reference from lyceum --help at build time
 branch: chore/6b21e1-generate-the-docs-site-cli-reference-fro
-status: planned
-gate: plan
+status: in-progress
+gate: build
 files: [docs-site/scripts/gen-cli-reference.mjs, docs-site/scripts/gen-cli-reference.test.mjs, docs-site/package.json, docs-site/.gitignore, docs-site/astro.config.mjs, docs-site/src/content/docs/reference/commands.md, docs-site/README.md, .github/workflows/docs-site.yml]
-approvals: []
+approvals:
+  - gate: plan
+    hashes:
+      lyceum/plan/6b21e1-generate-the-docs-site-cli-reference-fro.md: sha256:f5b74a893301178c539a5aa9e456e6154a39feda611b2bf73ad9fc60a1a8098c
+    commit: 86562cc
+    by: oritromax@gmail.com
+    at: 2026-11-08T06:54:46Z
 ---
 
 ## What and why
